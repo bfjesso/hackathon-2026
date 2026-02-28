@@ -713,9 +713,9 @@ function Zombie(x, z, speed) {
         this.vX = 0;
         this.vZ = 0;
       }
+
+      this.findTarget();
     }
-    
-    this.findTarget();
   }
 
   this.destroy = function destroy() {
