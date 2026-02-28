@@ -720,7 +720,7 @@ function Zombie(x, z, speed) {
   this.mesh = modelLoader.getSync('zombie');
   if (this.mesh) {
     this.mesh.position.set(x, 0, z);
-    this.mesh.scale.setScalar(0.1); // Zombie model is ~8 units, scale to ~0.8
+    this.mesh.scale.setScalar(0.2); // Zombie model is ~8 units, scale to ~0.8
     scene.add(this.mesh);
   }
 
@@ -819,8 +819,8 @@ function Building(type, x, z, options = {}) {
 
   const defaultScales = {
     solarPanel: 0.10,
-    windTurbine: 1.5,     
-    powerPlant: .1,    
+    windTurbine: 2,     
+    powerPlant: 0.3,    
   };
 
   // Manual position corrections for off-center models (in world units, applied after scaling)
