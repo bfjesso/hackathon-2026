@@ -2,6 +2,10 @@ import './style.css'
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
+function getRandomInRange(min, max) {
+    return Math.random() * (max - min) + min;
+}
+
 // ============================================
 // Game State
 // ============================================
@@ -356,13 +360,22 @@ let zombies = [];
 const maxNumOfZombies = 10;
 
 function spawnZombie() {
-  if(zombies.length >= maxNumOfZombies) {
+  if(zombies.length >= maxNumOfZombies || buildings.length == 0) {
     return;
   }
   
-  const zombie = new Zombie(-15, Math.random() * 10 - 5); // Spawn at edge, random Z
+  const zombie = new Zombie(-15, getRandomInRange(-15, 15), 0.1); // Spawn at edge, random Z
+  const randBuilding = buildings[getRandomInRange(0, buildings.length - 1)];
 
-  zombie.vX = 0.05; // Move along X axis toward player
+  console.log(randBuilding);
+
+  let xDiff = (randBuilding.x - zombie.x);
+  let zDiff = (randBuilding.z - zombie.z);
+  const vectorMagnitude = Math.sqrt(xDiff * xDiff + zDiff * zDiff);
+
+  zombie.vX = xDiff / vectorMagnitude;
+  zombie.vZ = zDiff / vectorMagnitude;
+
   zombies.push(zombie);
 }
 
@@ -597,11 +610,13 @@ window.addEventListener('click', (event) => {
   }
 });
 
-function Zombie(x, z) {
+function Zombie(x, z, speed) {
   this.x = x;
   this.z = z;
   this.vX = 0;
   this.vZ = 0;
+
+  this.speed = speed;
   
   // Use getSync since zombie model is preloaded
   this.mesh = modelLoader.getSync('zombie');
@@ -614,8 +629,8 @@ function Zombie(x, z) {
   this.update = function update() {
     if (!this.mesh) return;
     
-    this.x += this.vX;
-    this.z += this.vZ;
+    this.x += this.vX * this.speed;
+    this.z += this.vZ * this.speed;
     this.mesh.position.x = this.x;
     this.mesh.position.z = this.z;
   }
@@ -640,13 +655,15 @@ let buildings = [];
  * @param {number} gridZ - Grid Z position
  * @param {object} options - Optional settings { scale, rotationY }
  */
-function Building(type, worldX, worldZ, options = {}) {
+function Building(type, x, z, options = {}) {
   this.type = type;
-  this.worldX = worldX;
-  this.worldZ = worldZ;
+  this.x = x;
+  this.z = z;
   this.gridX = null; // Set by placeBuildingOnGrid
   this.gridZ = null;
   this.mesh = null;
+
+  this.health = 100;
 
   const defaultScales = {
     solarPanel: 0.005,    // Model is ~5400 units, scale to fit grid cell
@@ -697,7 +714,7 @@ function Building(type, worldX, worldZ, options = {}) {
     this.mesh.add(model);
     
     // Position container at grid cell
-    this.mesh.position.set(worldX, 0, worldZ);
+    this.mesh.position.set(x, 0, z);
     
     // Apply rotation (use provided option or default for this type)
     const rotation = options.rotationY !== undefined ? options.rotationY : (defaultRotations[type] || 0);
