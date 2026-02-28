@@ -125,12 +125,12 @@ const powerUpState = {
 
 const roundConfig = {
   baseZombiesToKill: 3,       // Zombies to kill in round 1
-  zombiesPerRoundIncrease: 2, // Additional zombies each round
+  zombiesPerRoundIncrease: 3, // Additional zombies each round
   roundTimeLimit: 30,         // Seconds per round
-  zombieHealthIncrease: 0.1, // 10% more health per round
+  zombieHealthIncrease: 0.10, // 10% more health per round
   zombieDamageIncrease: 0.05, // 5% more damage per round
-  zombieSpeedIncrease: 0.05,  // 5% more speed per round
-  maxZombiesIncrease: 1,      // Additional max zombies per round
+  zombieSpeedIncrease: 0.1,  // 10% more speed per round
+  maxZombiesIncrease: 2,      // Additional max zombies per round
   baseMaxZombies: 3,          // Starting max zombies on screen
   roundBonus: 100,
 };
@@ -156,20 +156,28 @@ damageFlash.style.cssText = `
   background: radial-gradient(ellipse at center, rgba(255, 0, 0, 0) 0%, rgba(255, 0, 0, 0.6) 100%);
   pointer-events: none;
   opacity: 0;
-  transition: opacity 0.1s ease-in;
   z-index: 50;
 `;
 document.body.appendChild(damageFlash);
 
+let lastDamageFlashTime = 0;
+const damageFlashCooldown = 500; // Minimum ms between flashes
 function triggerDamageFlash() {
+  const now = Date.now();
+  if (now - lastDamageFlashTime < damageFlashCooldown) return;
+  lastDamageFlashTime = now;
+  
+  // Force reflow to restart animation
+  damageFlash.style.transition = 'none';
   damageFlash.style.opacity = '1';
-  setTimeout(() => {
-    damageFlash.style.transition = 'opacity 0.4s ease-out';
-    damageFlash.style.opacity = '0';
-    setTimeout(() => {
-      damageFlash.style.transition = 'opacity 0.1s ease-in';
-    }, 400);
-  }, 50);
+  
+  // Use requestAnimationFrame to ensure the opacity change is applied
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      damageFlash.style.transition = 'opacity 0.4s ease-out';
+      damageFlash.style.opacity = '0';
+    });
+  });
 }
 
 // ============================================
@@ -574,10 +582,10 @@ const ui = {
 
     const buildingTypes = [
       { key: 'solarPanel', name: 'Solar Panel', cost: 100, hotkey: '1', desc: 'Generates energy from sunlight' },
-      { key: 'windTurbine', name: 'Wind Turbine', cost: 150, hotkey: '2', desc: 'Generates energy from wind' },
-      { key: 'powerPlant', name: 'Power Plant', cost: 300, hotkey: '3', desc: 'High output energy generator' },
-      { key: 'turret', name: 'Turret', cost: 200, hotkey: '4', desc: 'Shoots nearby zombies' },
-      { key: 'missileTurret', name: 'Missile Turret', cost: 400, hotkey: '5', desc: 'Splash damage missiles' },
+      { key: 'windTurbine', name: 'Wind Turbine', cost: 200, hotkey: '2', desc: 'Generates energy from wind' },
+      { key: 'powerPlant', name: 'Power Plant', cost: 600, hotkey: '3', desc: 'High output energy generator' },
+      { key: 'turret', name: 'Turret', cost: 400, hotkey: '4', desc: 'Shoots nearby zombies' },
+      { key: 'missileTurret', name: 'Missile Turret', cost: 600, hotkey: '5', desc: 'Splash damage missiles' },
     ];
 
     buildingTypes.forEach(building => {
@@ -1522,11 +1530,11 @@ window.addEventListener("keydown", (e)=>{
   
   // Building hotkeys (only work in build mode)
   if (buildMode) {
-    if (e.key === '1') ui.selectBuilding('solarPanel', 100);
-    if (e.key === '2') ui.selectBuilding('windTurbine', 150);
-    if (e.key === '3') ui.selectBuilding('powerPlant', 300);
-    if (e.key === '4') ui.selectBuilding('turret', 200);
-    if (e.key === '5') ui.selectBuilding('missileTurret', 400);
+    if (e.key === '1') ui.selectBuilding('solarPanel', 200);
+    if (e.key === '2') ui.selectBuilding('windTurbine', 300);
+    if (e.key === '3') ui.selectBuilding('powerPlant', 600);
+    if (e.key === '4') ui.selectBuilding('turret', 400);
+    if (e.key === '5') ui.selectBuilding('missileTurret', 800);
   }
 
   // Power-up hotkeys (only work in power-up mode)
@@ -1912,8 +1920,8 @@ function Zombie(x, z, speed, health = 100, damage = 0.5) {
 
         if(playerHealth > 0 && !powerUpState.shieldActive) {
           playerHealth -= this.damage * dt;
-        } else if (!powerUpState.shieldActive) { 
           triggerDamageFlash();
+        } else if (!powerUpState.shieldActive && playerHealth <= 0) { 
           playerHealth = 0;
         }
       }
@@ -2062,17 +2070,17 @@ function Building(type, x, z, options = {}) {
   const turretUpgrade = upgradeState[type];
   const turretConfig = {
     turret: {
-      damage: 20 + (turretUpgrade ? turretUpgrade.level * turretUpgrade.bonus : 0),
+      damage: 10 + (turretUpgrade ? turretUpgrade.level * turretUpgrade.bonus : 0),
       fireRate: 200,      // ms between shots
       range: 15,
       splashRadius: 0,    // no splash
       rotationSpeed: 0.15 // radians per frame for smooth rotation
     },
     missileTurret: {
-      damage: 50 + (turretUpgrade ? turretUpgrade.level * turretUpgrade.bonus : 0),
+      damage: 35 + (turretUpgrade ? turretUpgrade.level * turretUpgrade.bonus : 0),
       fireRate: 1000,     // ms between shots (slower)
       range: 20,
-      splashRadius: 10,    // splash damage radius
+      splashRadius: 5,    // splash damage radius
       rotationSpeed: 0.08 // slower rotation for missile turret
     }
   };
