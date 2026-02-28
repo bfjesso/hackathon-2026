@@ -1029,8 +1029,8 @@ const ui = {
     });
     const multiplier = powerUpState.surgeActive ? 2 : 1;
     totalRatePerTick *= multiplier;
-    // Convert to per-second (renderRate is 100ms, so 10 ticks per second)
-    const ticksPerSecond = 1000 / renderRate;
+    // Convert to per-second (rates are calibrated to 100ms ticks, so 10 ticks per second)
+    const ticksPerSecond = 10;
     const totalRatePerSecond = totalRatePerTick * ticksPerSecond;
     this.energyRateDisplay.textContent = `   +${totalRatePerSecond.toFixed(1)}/sec${multiplier > 1 ? ' (2x)' : ''}`;
     
@@ -1165,7 +1165,7 @@ function startRound() {
 /**
  * Check if round should end and handle progression
  */
-function updateRound() {
+function updateRound(dt) {
   // Round 0 is prep phase - no timer or zombie goals
   if (currentRound === 0) return;
   
@@ -1177,8 +1177,8 @@ function updateRound() {
     return;
   }
   
-  // Update timer (called every 100ms, so subtract 0.1 seconds)
-  roundTimeRemaining -= 0.1;
+  // Update timer using delta time (dt=1 equals 0.1 seconds at old 100ms tick)
+  roundTimeRemaining -= 0.1 * dt;
   
   // Check if time expired
   if (roundTimeRemaining <= 0) {
@@ -1209,11 +1209,25 @@ function spawnZombie() {
   zombies.push(zombie);
 }
 
-const renderRate = 100;
+const renderRate = 100; // Reference tick duration (ms) — used to normalize delta time
 
-let currentTime = 0; // in miliseconds
-function gameLoop() {
+let currentTime = 0; // in milliseconds
+let lastFrameTime = 0; // for delta time calculation
+let spawnAccumulator = 0; // accumulator for zombie spawn timing
+
+function gameLoop(timestamp) {
   if (gameOver) return;
+
+  // Request next frame immediately
+  requestAnimationFrame(gameLoop);
+
+  // Calculate delta time in ms, clamped to avoid spiral of death
+  if (lastFrameTime === 0) lastFrameTime = timestamp;
+  const deltaTimeMs = Math.min(timestamp - lastFrameTime, 200); // cap at 200ms
+  lastFrameTime = timestamp;
+
+  // dt is the normalized delta: 1.0 = one old 100ms tick
+  const dt = deltaTimeMs / renderRate;
 
   // Check for game over
   if (playerHealth <= 0) {
@@ -1225,7 +1239,10 @@ function gameLoop() {
     return;
   }
 
-  if(currentTime % 1000 == 0){
+  // Spawn zombies every 1000ms using accumulator
+  spawnAccumulator += deltaTimeMs;
+  if (spawnAccumulator >= 1000) {
+    spawnAccumulator -= 1000;
     // Spawn zombies until we reach max capacity
     while (zombies.length < currentMaxZombies && buildings.length > 0 && currentRound > 0) {
       spawnZombie();
@@ -1233,22 +1250,22 @@ function gameLoop() {
   }
   
   for(let i = 0; i < zombies.length; i++){
-    zombies[i].update();
+    zombies[i].update(dt);
   }
 
   for(let i = 0; i < buildings.length; i++){
-    buildings[i].update();
+    buildings[i].update(dt);
   }
 
   // Update tracer effects
   updateTracers();
   
   // Update round system
-  updateRound();
+  updateRound(dt);
 
   // Tick power-up timers
   if (powerUpState.shieldTimer > 0) {
-    powerUpState.shieldTimer -= renderRate;
+    powerUpState.shieldTimer -= deltaTimeMs;
     if (powerUpState.shieldTimer <= 0) {
       powerUpState.shieldActive = false;
       powerUpState.shieldTimer = 0;
@@ -1265,31 +1282,31 @@ function gameLoop() {
 
   // Animate shield dome
   if (shieldMesh && shieldMesh.visible) {
-    shieldMesh.rotation.y += 0.008;
+    shieldMesh.rotation.y += 0.008 * dt;
   }
   if (powerUpState.instaKillTimer > 0) {
-    powerUpState.instaKillTimer -= renderRate;
+    powerUpState.instaKillTimer -= deltaTimeMs;
     if (powerUpState.instaKillTimer <= 0) {
       powerUpState.instaKillActive = false;
       powerUpState.instaKillTimer = 0;
     }
   }
   if (powerUpState.surgeTimer > 0) {
-    powerUpState.surgeTimer -= renderRate;
+    powerUpState.surgeTimer -= deltaTimeMs;
     if (powerUpState.surgeTimer <= 0) {
       powerUpState.surgeActive = false;
       powerUpState.surgeTimer = 0;
     }
   }
   if (currentRound > 0) {
-    energy += hydroElectricRate * (powerUpState.surgeActive ? 2 : 1);
+    energy += hydroElectricRate * (powerUpState.surgeActive ? 2 : 1) * dt;
   }
   
 
   // Tick cooldowns
-  if (powerUpState.shieldCooldown > 0) powerUpState.shieldCooldown -= renderRate;
-  if (powerUpState.instaKillCooldown > 0) powerUpState.instaKillCooldown -= renderRate;
-  if (powerUpState.surgeCooldown > 0) powerUpState.surgeCooldown -= renderRate;
+  if (powerUpState.shieldCooldown > 0) powerUpState.shieldCooldown -= deltaTimeMs;
+  if (powerUpState.instaKillCooldown > 0) powerUpState.instaKillCooldown -= deltaTimeMs;
+  if (powerUpState.surgeCooldown > 0) powerUpState.surgeCooldown -= deltaTimeMs;
 
   // Update power-up button cooldown visuals
   if (ui.powerUpMenu) {
@@ -1405,7 +1422,7 @@ function gameLoop() {
     });
   }
 
-  currentTime += renderRate;
+  currentTime += deltaTimeMs;
   
   // Update hover indicator every frame
   updateHoverIndicator();
@@ -1803,7 +1820,7 @@ function Zombie(x, z, speed, health = 100, damage = 0.5) {
     this.vZ = zDiff / vectorMagnitude;
   }
 
-  this.update = function update() {
+  this.update = function update(dt) {
 
     if (!this.mesh) return;
     
@@ -1813,8 +1830,8 @@ function Zombie(x, z, speed, health = 100, damage = 0.5) {
       return;
     }
     
-    this.x += this.vX * this.speed;
-    this.z += this.vZ * this.speed;
+    this.x += this.vX * this.speed * dt;
+    this.z += this.vZ * this.speed * dt;
     this.mesh.position.x = this.x;
     this.mesh.position.z = this.z;
 
@@ -1834,7 +1851,7 @@ function Zombie(x, z, speed, health = 100, damage = 0.5) {
 
       if (this.isMoving) {
         // --- Walking animation ---
-        this.animTime += 0.1;
+        this.animTime += 0.1 * dt;
         this.isAttacking = false;
 
         const t = this.animTime * walkSpeed;
@@ -1853,7 +1870,7 @@ function Zombie(x, z, speed, health = 100, damage = 0.5) {
       } else {
         // --- Idle / Attacking animation ---
         this.isAttacking = true;
-        this.animTime += 0.08;
+        this.animTime += 0.08 * dt;
 
         const t = this.animTime * attackSpeed;
 
@@ -1884,7 +1901,7 @@ function Zombie(x, z, speed, health = 100, damage = 0.5) {
           this.vZ = 0;
           
           if (!powerUpState.shieldActive) {
-            this.targetBuilding.health -= this.damage;
+            this.targetBuilding.health -= this.damage * dt;
           }
         }
       }
@@ -1894,7 +1911,7 @@ function Zombie(x, z, speed, health = 100, damage = 0.5) {
         this.vZ = 0;
 
         if(playerHealth > 0 && !powerUpState.shieldActive) {
-          playerHealth -= this.damage;
+          playerHealth -= this.damage * dt;
         } else if (!powerUpState.shieldActive) { 
           triggerDamageFlash();
           playerHealth = 0;
@@ -2148,8 +2165,8 @@ function Building(type, x, z, options = {}) {
     scene.add(this.healthBarGroup); // Add to scene, not building mesh
   }
 
-  this.update = function update() {
-    energy += this.energyRate * (powerUpState.surgeActive ? 2 : 1);
+  this.update = function update(dt) {
+    energy += this.energyRate * (powerUpState.surgeActive ? 2 : 1) * dt;
 
     // ============================================
     // Turret Attack Logic
@@ -2182,9 +2199,9 @@ function Building(type, x, z, options = {}) {
         while (rotationDiff > Math.PI) rotationDiff -= Math.PI * 2;
         while (rotationDiff < -Math.PI) rotationDiff += Math.PI * 2;
         
-        // Interpolate
+        // Interpolate (scale by dt for frame-rate independence)
         if (Math.abs(rotationDiff) > 0.01) {
-          this.currentRotation += rotationDiff * this.turretStats.rotationSpeed;
+          this.currentRotation += rotationDiff * this.turretStats.rotationSpeed * dt;
         } else {
           this.currentRotation = this.targetRotation;
         }
@@ -2846,7 +2863,9 @@ function startGameplay() {
   if (ui.container) ui.container.style.display = 'flex';
 
   console.log('Game starting!');
-  gameLoopInterval = window.setInterval(gameLoop, renderRate);
+  lastFrameTime = 0;
+  spawnAccumulator = 0;
+  requestAnimationFrame(gameLoop);
 }
 
 async function initGame() {
