@@ -50,18 +50,18 @@ const scene = new THREE.Scene();
 // Skybox and Fog
 // ============================================
 
-// Set sky color as scene background
-scene.background = new THREE.Color(0x87CEEB); // Sky blue
+// Set sky color as scene background - more vibrant
+scene.background = new THREE.Color(0x90c8ff); // Brighter sky blue
 
 // Add fog for atmosphere (color, near distance, far distance)
-scene.fog = new THREE.Fog(0x87CEEB, 10, 75);
+scene.fog = new THREE.Fog(0x90c8ff, 20, 100);
 
 // Create a gradient sky using a large sphere
 const skyGeometry = new THREE.SphereGeometry(500, 32, 32);
 const skyMaterial = new THREE.ShaderMaterial({
   uniforms: {
-    topColor: { value: new THREE.Color(0x0077ff) },    // Deep blue at top
-    bottomColor: { value: new THREE.Color(0x87CEEB) }, // Light blue at horizon
+    topColor: { value: new THREE.Color(0x5599ff) },    // Vibrant blue at top
+    bottomColor: { value: new THREE.Color(0xaaddff) }, // Light blue at horizon
     offset: { value: 33 },
     exponent: { value: 0.6 }
   },
@@ -479,25 +479,58 @@ const ui = {
 
 const camera = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 0.1, 1000 );
 
-const renderer = new THREE.WebGLRenderer();
+// Enhanced renderer with antialiasing and better quality
+const renderer = new THREE.WebGLRenderer({ 
+  antialias: true,
+  powerPreference: 'high-performance'
+});
 renderer.setSize( window.innerWidth, window.innerHeight );
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Sharper on high-DPI displays
+renderer.shadowMap.enabled = true; // Enable shadows
+renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Soft shadows
+renderer.toneMapping = THREE.ACESFilmicToneMapping; // Better color grading
+renderer.toneMappingExposure = 1.2; // Slightly brighter and more vibrant
+renderer.outputColorSpace = THREE.SRGBColorSpace; // Correct color space
 document.body.appendChild( renderer.domElement );
 
 const gridHelper = new THREE.GridHelper(
   gridConfig.totalWidth, 
   gridConfig.gridWidth,
-  0x444444,
-  0x888888
+  0x666666,  // Lighter center lines
+  0x999999   // Lighter grid lines for better contrast
 );
 scene.add(gridHelper);
 
-// Add lighting for 3D models
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+// Add lighting for 3D models - enhanced for cartoon feel
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.7); // Brighter ambient for less harsh shadows
 scene.add(ambientLight);
 
-const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-directionalLight.position.set(10, 20, 10);
+// Main directional light (sun)
+const directionalLight = new THREE.DirectionalLight(0xfff4e6, 1.2); // Warm sunlight, brighter
+directionalLight.position.set(15, 25, 15);
+directionalLight.castShadow = true; // Enable shadow casting
+
+// Configure shadow quality
+directionalLight.shadow.mapSize.width = 2048;
+directionalLight.shadow.mapSize.height = 2048;
+directionalLight.shadow.camera.near = 0.5;
+directionalLight.shadow.camera.far = 100;
+directionalLight.shadow.camera.left = -50;
+directionalLight.shadow.camera.right = 50;
+directionalLight.shadow.camera.top = 50;
+directionalLight.shadow.camera.bottom = -50;
+directionalLight.shadow.bias = -0.0001;
 scene.add(directionalLight);
+
+// Add a subtle fill light from the opposite side for softer look
+const fillLight = new THREE.DirectionalLight(0xb0c4ff, 0.4); // Cool blue fill
+fillLight.position.set(-10, 10, -10);
+scene.add(fillLight);
+
+// Add rim light for better edge definition (cartoony look)
+const rimLight = new THREE.DirectionalLight(0xffffff, 0.3);
+rimLight.position.set(0, 5, -20);
+scene.add(rimLight);
 
 camera.position.set(0, 15, 20);
 camera.lookAt(0, 0, 0);
@@ -553,6 +586,9 @@ function gameLoop() {
   energy += hydroElectricRate;
 
   currentTime += renderRate;
+  
+  // Update hover indicator every frame
+  updateHoverIndicator();
   
   ui.update();
   renderer.render( scene, camera );
@@ -657,14 +693,15 @@ const mouse = new THREE.Vector2();
 
 // Create a ground plane for raycasting
 const groundGeometry = new THREE.PlaneGeometry(gridConfig.totalWidth, gridConfig.totalHeight);
-const groundMaterial = new THREE.MeshBasicMaterial({ 
-  color: 0x228B22, 
-  transparent: true, 
-  opacity: 0.3 
+const groundMaterial = new THREE.MeshStandardMaterial({ 
+  color: 0x4a9a4a, // Richer green
+  roughness: 0.8,
+  metalness: 0.1
 });
 const ground = new THREE.Mesh(groundGeometry, groundMaterial);
 ground.rotation.x = -Math.PI / 2;
 ground.position.y = -0.01; // Slightly below grid
+ground.receiveShadow = true; // Ground receives shadows
 scene.add(ground);
 
 /**
@@ -758,17 +795,22 @@ function updateGridRings() {
 window.updateGridRings = updateGridRings;
 
 // Hover indicator
-const hoverGeometry = new THREE.BoxGeometry(gridConfig.cellSize * 0.9, 0.1, gridConfig.cellSize * 0.9);
-const hoverMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.5 });
+const hoverGeometry = new THREE.BoxGeometry(gridConfig.cellSize * 0.9, 0.2, gridConfig.cellSize * 0.9);
+const hoverMaterial = new THREE.MeshStandardMaterial({ 
+  color: 0x00ff00, 
+  transparent: true, 
+  opacity: 0.6,
+  emissive: 0x00ff00,
+  emissiveIntensity: 0.3,
+  roughness: 0.5,
+  metalness: 0.1
+});
 const hoverIndicator = new THREE.Mesh(hoverGeometry, hoverMaterial);
 hoverIndicator.visible = false;
 scene.add(hoverIndicator);
 
-// Mouse move handler for hover effect
-window.addEventListener('mousemove', (event) => {
-  mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-  mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-
+// Function to update hover indicator (called every frame)
+function updateHoverIndicator() {
   if (!buildMode || !ui.selectedBuilding) {
     hoverIndicator.visible = false;
     return;
@@ -789,8 +831,10 @@ window.addEventListener('mousemove', (event) => {
       // Color based on can place or not
       if (isCellEmpty(gridPos.x, gridPos.z) && energy >= ui.selectedBuildingCost) {
         hoverMaterial.color.setHex(0x00ff00); // Green = can place
+        hoverMaterial.emissive.setHex(0x00ff00);
       } else {
         hoverMaterial.color.setHex(0xff0000); // Red = can't place
+        hoverMaterial.emissive.setHex(0xff0000);
       }
     } else {
       hoverIndicator.visible = false;
@@ -798,6 +842,12 @@ window.addEventListener('mousemove', (event) => {
   } else {
     hoverIndicator.visible = false;
   }
+}
+
+// Mouse move handler - just update mouse position
+window.addEventListener('mousemove', (event) => {
+  mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
 });
 
 // Click handler for placing buildings
@@ -1033,6 +1083,17 @@ function Building(type, x, z, options = {}) {
         if (child.isMesh) {
           child.material = child.material.clone(); // Clone to avoid affecting other instances
           child.material.color.setHex(buildingColors[type]);
+          // Enable shadows for all building meshes
+          child.castShadow = true;
+          child.receiveShadow = true;
+        }
+      });
+    } else {
+      // Enable shadows for buildings without custom colors
+      model.traverse((child) => {
+        if (child.isMesh) {
+          child.castShadow = true;
+          child.receiveShadow = true;
         }
       });
     }
@@ -1304,6 +1365,14 @@ async function initGame() {
     
     // Position map centered at origin, sitting on ground
     mapModel.position.set(-center.x+30, -box.min.y-10, -center.z-110);
+    
+    // Enable shadows for map
+    mapModel.traverse((child) => {
+      if (child.isMesh) {
+        child.receiveShadow = true;
+        child.castShadow = true;
+      }
+    });
     
     scene.add(mapModel);
   }
