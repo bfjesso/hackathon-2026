@@ -2588,7 +2588,7 @@ const cutsceneNarration = [
   "For decades, humanity ignored the warnings...\nburning oil, coal, and gas until there was nothing left.",
   "The power grid collapsed. Cities went dark.\nWithout energy, civilization crumbled.",
   "Then came the plague.\nSomething in the poisoned air... it turned people.",
-  "The dead began to rise — twisted by the toxic remnants\nof a world addicted to fossil fuels.",
+  "The dead began to rise, twisted by the toxic remnants\nof a world addicted to fossil fuels.",
   "The last defense manager stationed here...\ndid not make it.",
   "Now it's your turn.",
   "Keep the remaining survivors alive.\nBuild renewable energy. Defend the city.\n\nThis is Power Defense.",
@@ -2845,6 +2845,11 @@ async function initGame() {
   // Wire up menu button
   const newGameBtn = document.getElementById('new-game-btn');
   newGameBtn.addEventListener('click', () => {
+    // Show black overlay immediately to prevent flash
+    const cutsceneOverlay = document.getElementById('cutscene-overlay');
+    cutsceneOverlay.style.display = 'flex';
+    cutsceneOverlay.style.opacity = '1';
+    
     // Hide menu
     const menu = document.getElementById('main-menu');
     menu.style.transition = 'opacity 0.6s ease';
