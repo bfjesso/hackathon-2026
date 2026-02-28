@@ -1,0 +1,11 @@
+Model Information:
+* title:	Turret-low-poly
+* source:	https://sketchfab.com/3d-models/turret-low-poly-89b4beeaeb604158a9d5b5670cac13a6
+* author:	Fortyx (https://sketchfab.com/Fortyx)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Turret-low-poly" (https://sketchfab.com/3d-models/turret-low-poly-89b4beeaeb604158a9d5b5670cac13a6) by Fortyx (https://sketchfab.com/Fortyx) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

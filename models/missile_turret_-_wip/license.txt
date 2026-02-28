@@ -1,0 +1,11 @@
+Model Information:
+* title:	Missile Turret - WIP
+* source:	https://sketchfab.com/3d-models/missile-turret-wip-f4e9d7edcb124c4ca298bd010778a513
+* author:	Ingoldt (https://sketchfab.com/nilsolejonack)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Missile Turret - WIP" (https://sketchfab.com/3d-models/missile-turret-wip-f4e9d7edcb124c4ca298bd010778a513) by Ingoldt (https://sketchfab.com/nilsolejonack) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
