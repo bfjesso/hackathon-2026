@@ -1,0 +1,11 @@
+Model Information:
+* title:	Low Poly Wind Turbine
+* source:	https://sketchfab.com/3d-models/low-poly-wind-turbine-84f082f7a05b4df09e7bb6e0a62d127e
+* author:	Hossein Taj Teymori (https://sketchfab.com/hosseintajteymori)
+
+Model License:
+* license type:	CC-BY-SA-4.0 (http://creativecommons.org/licenses/by-sa/4.0/)
+* requirements:	Author must be credited. Modified versions must have the same license. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Low Poly Wind Turbine" (https://sketchfab.com/3d-models/low-poly-wind-turbine-84f082f7a05b4df09e7bb6e0a62d127e) by Hossein Taj Teymori (https://sketchfab.com/hosseintajteymori) licensed under CC-BY-SA-4.0 (http://creativecommons.org/licenses/by-sa/4.0/)
