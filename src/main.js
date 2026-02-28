@@ -2,8 +2,40 @@ import './style.css'
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
+// ============================================
+// Game State
+// ============================================
+
 let energy = 0;
 let health = 100;
+let money = 500;
+let buildMode = false;
+
+// ============================================
+// Grid Configuration
+// ============================================
+
+const gridConfig = {
+  cellSize: 1,      // Size of each grid cell in world units
+  gridWidth: 30,    // Number of cells in X direction
+  gridHeight: 30,   // Number of cells in Z direction
+  
+  // Computed properties
+  get totalWidth() { return this.cellSize * this.gridWidth; },
+  get totalHeight() { return this.cellSize * this.gridHeight; },
+  get offsetX() { return -this.totalWidth / 2; },
+  get offsetZ() { return -this.totalHeight / 2; },
+};
+
+// Grid data structure to track what's placed where
+// null = empty, otherwise contains building reference
+const grid = [];
+for (let x = 0; x < gridConfig.gridWidth; x++) {
+  grid[x] = [];
+  for (let z = 0; z < gridConfig.gridHeight; z++) {
+    grid[x][z] = null;
+  }
+}
 
 const scene = new THREE.Scene();
 
@@ -117,14 +149,201 @@ const modelLoader = {
 
 // Make modelLoader available globally for debugging
 window.modelLoader = modelLoader;
+
+// ============================================
+// UI System
+// ============================================
+
+const ui = {
+  container: null,
+  moneyDisplay: null,
+  healthDisplay: null,
+  energyDisplay: null,
+  buildModeIndicator: null,
+  buildMenu: null,
+  selectedBuilding: null,
+
+  init() {
+    // Create UI container
+    this.container = document.createElement('div');
+    this.container.id = 'game-ui';
+    this.container.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      padding: 10px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      pointer-events: none;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      z-index: 100;
+    `;
+    document.body.appendChild(this.container);
+
+    // Stats panel (left side)
+    const statsPanel = document.createElement('div');
+    statsPanel.style.cssText = `
+      background: rgba(0, 0, 0, 0.7);
+      padding: 15px 20px;
+      border-radius: 10px;
+      color: white;
+      pointer-events: auto;
+    `;
+    
+    this.moneyDisplay = document.createElement('div');
+    this.moneyDisplay.style.cssText = 'font-size: 24px; color: #ffd700; margin-bottom: 8px;';
+    
+    this.healthDisplay = document.createElement('div');
+    this.healthDisplay.style.cssText = 'font-size: 18px; color: #ff6b6b; margin-bottom: 5px;';
+    
+    this.energyDisplay = document.createElement('div');
+    this.energyDisplay.style.cssText = 'font-size: 18px; color: #4ecdc4; margin-bottom: 10px;';
+    
+    this.buildModeIndicator = document.createElement('div');
+    this.buildModeIndicator.style.cssText = 'font-size: 14px; color: #888; margin-top: 5px; padding-top: 10px; border-top: 1px solid #444;';
+    this.buildModeIndicator.textContent = '[B] Build Mode';
+    
+    statsPanel.appendChild(this.moneyDisplay);
+    statsPanel.appendChild(this.healthDisplay);
+    statsPanel.appendChild(this.energyDisplay);
+    statsPanel.appendChild(this.buildModeIndicator);
+    this.container.appendChild(statsPanel);
+
+    // Build menu (right side) - hidden by default
+    this.buildMenu = document.createElement('div');
+    this.buildMenu.style.cssText = `
+      background: rgba(0, 0, 0, 0.7);
+      padding: 15px;
+      border-radius: 10px;
+      color: white;
+      pointer-events: auto;
+      display: none;
+    `;
+    
+    const menuTitle = document.createElement('div');
+    menuTitle.textContent = 'BUILD';
+    menuTitle.style.cssText = 'font-size: 14px; margin-bottom: 10px; text-align: center; opacity: 0.7;';
+    this.buildMenu.appendChild(menuTitle);
+
+    const buildingTypes = [
+      { key: 'solarPanel', name: 'Solar Panel', cost: 100, hotkey: '1' },
+      { key: 'windTurbine', name: 'Wind Turbine', cost: 150, hotkey: '2' },
+      { key: 'powerPlant', name: 'Power Plant', cost: 300, hotkey: '3' },
+    ];
+
+    buildingTypes.forEach(building => {
+      const btn = document.createElement('button');
+      btn.textContent = `[${building.hotkey}] ${building.name} ($${building.cost})`;
+      btn.dataset.buildingType = building.key;
+      btn.dataset.cost = building.cost;
+      btn.style.cssText = `
+        display: block;
+        width: 100%;
+        padding: 10px 15px;
+        margin-bottom: 5px;
+        background: #333;
+        border: 2px solid #555;
+        color: white;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 14px;
+        transition: all 0.2s;
+      `;
+      btn.addEventListener('mouseenter', () => btn.style.borderColor = '#4ecdc4');
+      btn.addEventListener('mouseleave', () => {
+        btn.style.borderColor = this.selectedBuilding === building.key ? '#ffd700' : '#555';
+      });
+      btn.addEventListener('click', () => this.selectBuilding(building.key, building.cost));
+      this.buildMenu.appendChild(btn);
+    });
+
+    // Cancel button
+    const cancelBtn = document.createElement('button');
+    cancelBtn.textContent = '[ESC] Cancel';
+    cancelBtn.style.cssText = `
+      display: block;
+      width: 100%;
+      padding: 8px 15px;
+      margin-top: 10px;
+      background: #8b0000;
+      border: 2px solid #a00;
+      color: white;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 12px;
+    `;
+    cancelBtn.addEventListener('click', () => this.cancelSelection());
+    this.buildMenu.appendChild(cancelBtn);
+
+    this.container.appendChild(this.buildMenu);
+    this.update();
+  },
+
+  selectBuilding(type, cost) {
+    this.selectedBuilding = type;
+    this.selectedBuildingCost = cost;
+    // Update button styles
+    this.buildMenu.querySelectorAll('button').forEach(btn => {
+      btn.style.borderColor = btn.dataset.buildingType === type ? '#ffd700' : '#555';
+    });
+    console.log(`Selected: ${type}`);
+  },
+
+  cancelSelection() {
+    this.selectedBuilding = null;
+    this.selectedBuildingCost = 0;
+    this.buildMenu.querySelectorAll('button').forEach(btn => {
+      btn.style.borderColor = '#555';
+    });
+  },
+
+  toggleBuildMode() {
+    buildMode = !buildMode;
+    this.updateBuildMode();
+    if (!buildMode) {
+      this.cancelSelection();
+    }
+  },
+
+  updateBuildMode() {
+    // Show/hide build menu
+    this.buildMenu.style.display = buildMode ? 'block' : 'none';
+    
+    // Update indicator
+    if (buildMode) {
+      this.buildModeIndicator.textContent = '🔨 BUILD MODE [B to exit]';
+      this.buildModeIndicator.style.color = '#4ecdc4';
+    } else {
+      this.buildModeIndicator.textContent = '[B] Build Mode';
+      this.buildModeIndicator.style.color = '#888';
+    }
+    
+    // Show/hide grid cell rings
+    updateGridRings();
+  },
+
+  update() {
+    this.moneyDisplay.textContent = `💰 $${money}`;
+    this.healthDisplay.textContent = `❤️ Health: ${health}`;
+    this.energyDisplay.textContent = `⚡ Energy: ${energy}`;
+  }
+};
+
 const camera = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 0.1, 1000 );
 
 const renderer = new THREE.WebGLRenderer();
 renderer.setSize( window.innerWidth, window.innerHeight );
 document.body.appendChild( renderer.domElement );
 
-const gridHeper = new THREE.GridHelper(30, 30);
-scene.add(gridHeper);
+const gridHelper = new THREE.GridHelper(
+  gridConfig.totalWidth, 
+  gridConfig.gridWidth,
+  0x444444,
+  0x888888
+);
+scene.add(gridHelper);
 
 // Add lighting for 3D models
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
@@ -173,17 +392,206 @@ window.addEventListener("resize", ()=>{
 });
 
 window.addEventListener("keydown", (e)=>{
-  if(e.key === "d" || e.key === "D" || e.key === "ArrowRight") {
-    cube.position.x += 0.5;
+  // Toggle build mode
+  if (e.key === 'b' || e.key === 'B') {
+    ui.toggleBuildMode();
+    return;
   }
-  if(e.key === "a" || e.key === "A" || e.key === "ArrowLeft") {
-    cube.position.x -= 0.5;
+  
+  // Building hotkeys (only work in build mode)
+  if (buildMode) {
+    if (e.key === '1') ui.selectBuilding('solarPanel', 100);
+    if (e.key === '2') ui.selectBuilding('windTurbine', 150);
+    if (e.key === '3') ui.selectBuilding('powerPlant', 300);
   }
-  if(e.key === "w" || e.key === "w" || e.key === "ArrowUp") {
-    cube.position.y += 0.5;
+  
+  if (e.key === 'Escape') {
+    if (buildMode) {
+      ui.toggleBuildMode();
+    }
   }
-  if(e.key === "s" || e.key === "s" || e.key === "ArrowDown") {
-    cube.position.y -= 0.5;
+});
+
+// ============================================
+// Grid Placement System
+// ============================================
+
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+
+// Create a ground plane for raycasting
+const groundGeometry = new THREE.PlaneGeometry(gridConfig.totalWidth, gridConfig.totalHeight);
+const groundMaterial = new THREE.MeshBasicMaterial({ 
+  color: 0x228B22, 
+  transparent: true, 
+  opacity: 0.3 
+});
+const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = -0.01; // Slightly below grid
+scene.add(ground);
+
+/**
+ * Convert world position to grid coordinates
+ */
+function worldToGrid(worldX, worldZ) {
+  const gridX = Math.floor((worldX - gridConfig.offsetX) / gridConfig.cellSize);
+  const gridZ = Math.floor((worldZ - gridConfig.offsetZ) / gridConfig.cellSize);
+  return { x: gridX, z: gridZ };
+}
+
+/**
+ * Convert grid coordinates to world position (center of cell)
+ */
+function gridToWorld(gridX, gridZ) {
+  const worldX = gridConfig.offsetX + (gridX + 0.5) * gridConfig.cellSize;
+  const worldZ = gridConfig.offsetZ + (gridZ + 0.5) * gridConfig.cellSize;
+  return { x: worldX, z: worldZ };
+}
+
+/**
+ * Check if grid coordinates are valid
+ */
+function isValidGridPos(gridX, gridZ) {
+  return gridX >= 0 && gridX < gridConfig.gridWidth && 
+         gridZ >= 0 && gridZ < gridConfig.gridHeight;
+}
+
+/**
+ * Check if a grid cell is empty
+ */
+function isCellEmpty(gridX, gridZ) {
+  return isValidGridPos(gridX, gridZ) && grid[gridX][gridZ] === null;
+}
+
+// ============================================
+// Grid Cell Rings (for build mode)
+// ============================================
+
+const gridRingsGroup = new THREE.Group();
+gridRingsGroup.visible = false;
+scene.add(gridRingsGroup);
+
+// Create ring geometry for each cell
+const ringOuterRadius = gridConfig.cellSize * 0.45;
+const ringInnerRadius = gridConfig.cellSize * 0.38;
+const ringGeometry = new THREE.RingGeometry(ringInnerRadius, ringOuterRadius, 32);
+const ringMaterial = new THREE.MeshBasicMaterial({ 
+  color: 0x00ffff, 
+  transparent: true, 
+  opacity: 0.6,
+  side: THREE.DoubleSide
+});
+
+// Create rings for all grid cells
+for (let x = 0; x < gridConfig.gridWidth; x++) {
+  for (let z = 0; z < gridConfig.gridHeight; z++) {
+    const ring = new THREE.Mesh(ringGeometry, ringMaterial.clone());
+    const worldPos = gridToWorld(x, z);
+    ring.position.set(worldPos.x, 0.02, worldPos.z);
+    ring.rotation.x = -Math.PI / 2;
+    ring.userData.gridX = x;
+    ring.userData.gridZ = z;
+    gridRingsGroup.add(ring);
+  }
+}
+
+/**
+ * Update grid rings visibility and colors based on build mode and cell occupancy
+ */
+function updateGridRings() {
+  gridRingsGroup.visible = buildMode;
+  
+  if (buildMode) {
+    gridRingsGroup.children.forEach(ring => {
+      const { gridX, gridZ } = ring.userData;
+      const isEmpty = grid[gridX][gridZ] === null;
+      
+      if (isEmpty) {
+        ring.material.color.setHex(0x00ffff); // Cyan for empty
+        ring.material.opacity = 0.6;
+      } else {
+        ring.material.color.setHex(0xff4444); // Red for occupied
+        ring.material.opacity = 0.4;
+      }
+    });
+  }
+}
+
+// Make updateGridRings available globally
+window.updateGridRings = updateGridRings;
+
+// Hover indicator
+const hoverGeometry = new THREE.BoxGeometry(gridConfig.cellSize * 0.9, 0.1, gridConfig.cellSize * 0.9);
+const hoverMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.5 });
+const hoverIndicator = new THREE.Mesh(hoverGeometry, hoverMaterial);
+hoverIndicator.visible = false;
+scene.add(hoverIndicator);
+
+// Mouse move handler for hover effect
+window.addEventListener('mousemove', (event) => {
+  mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+  if (!buildMode || !ui.selectedBuilding) {
+    hoverIndicator.visible = false;
+    return;
+  }
+
+  raycaster.setFromCamera(mouse, camera);
+  const intersects = raycaster.intersectObject(ground);
+
+  if (intersects.length > 0) {
+    const point = intersects[0].point;
+    const gridPos = worldToGrid(point.x, point.z);
+    
+    if (isValidGridPos(gridPos.x, gridPos.z)) {
+      const worldPos = gridToWorld(gridPos.x, gridPos.z);
+      hoverIndicator.position.set(worldPos.x, 0.05, worldPos.z);
+      hoverIndicator.visible = true;
+      
+      // Color based on can place or not
+      if (isCellEmpty(gridPos.x, gridPos.z) && money >= ui.selectedBuildingCost) {
+        hoverMaterial.color.setHex(0x00ff00); // Green = can place
+      } else {
+        hoverMaterial.color.setHex(0xff0000); // Red = can't place
+      }
+    } else {
+      hoverIndicator.visible = false;
+    }
+  } else {
+    hoverIndicator.visible = false;
+  }
+});
+
+// Click handler for placing buildings
+window.addEventListener('click', (event) => {
+  if (!buildMode || !ui.selectedBuilding) return;
+
+  mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+  raycaster.setFromCamera(mouse, camera);
+  const intersects = raycaster.intersectObject(ground);
+
+  if (intersects.length > 0) {
+    const point = intersects[0].point;
+    const gridPos = worldToGrid(point.x, point.z);
+    
+    if (isCellEmpty(gridPos.x, gridPos.z) && money >= ui.selectedBuildingCost) {
+      const worldPos = gridToWorld(gridPos.x, gridPos.z);
+      
+      // Deduct money
+      money -= ui.selectedBuildingCost;
+      ui.update();
+      
+      // Place building
+      const building = placeBuildingOnGrid(ui.selectedBuilding, gridPos.x, gridPos.z);
+      console.log(`Placed ${ui.selectedBuilding} at grid (${gridPos.x}, ${gridPos.z})`);
+      
+      // Update grid rings to show new occupied cell
+      updateGridRings();
+    }
   }
 });
 
@@ -230,12 +638,13 @@ let buildings = [];
  * @param {number} gridZ - Grid Z position
  * @param {object} options - Optional settings { scale, rotationY }
  */
-function Building(type, gridX, gridZ, options = {}) {
+function Building(type, worldX, worldZ, options = {}) {
   this.type = type;
-  this.gridX = gridX;
-  this.gridZ = gridZ;
+  this.worldX = worldX;
+  this.worldZ = worldZ;
+  this.gridX = null; // Set by placeBuildingOnGrid
+  this.gridZ = null;
   this.mesh = null;
-  this.loaded = false;
 
   const defaultScales = {
     solarPanel: 0.5,
@@ -243,42 +652,65 @@ function Building(type, gridX, gridZ, options = {}) {
     powerPlant: 0.4,
   };
 
-  modelLoader.load(type).then((model) => {
-    this.mesh = model;
-    this.mesh.position.set(gridX, 0, gridZ);
+  // Use getSync since models are preloaded
+  this.mesh = modelLoader.getSync(type);
+  if (this.mesh) {
+    this.mesh.position.set(worldX, 0, worldZ);
     this.mesh.scale.setScalar(options.scale || defaultScales[type] || 1);
     if (options.rotationY !== undefined) {
       this.mesh.rotation.y = options.rotationY;
     }
     scene.add(this.mesh);
-    this.loaded = true;
-  });
+  }
 
   this.destroy = function destroy() {
     if (this.mesh) {
       scene.remove(this.mesh);
-      const index = buildings.indexOf(this);
-      if (index > -1) buildings.splice(index, 1);
     }
+    // Remove from grid
+    if (this.gridX !== null && this.gridZ !== null) {
+      grid[this.gridX][this.gridZ] = null;
+    }
+    // Remove from buildings array
+    const index = buildings.indexOf(this);
+    if (index > -1) buildings.splice(index, 1);
   }
 }
 
 /**
- * Place a building on the grid
+ * Place a building on the grid (uses world coordinates)
  * @param {string} type - Building type (solarPanel, windTurbine, powerPlant)
- * @param {number} gridX - Grid X position
- * @param {number} gridZ - Grid Z position
+ * @param {number} gridX - Grid X index
+ * @param {number} gridZ - Grid Z index
  * @param {object} options - Optional settings
  * @returns {Building} - The created building
  */
-function placeBuilding(type, gridX, gridZ, options = {}) {
-  const building = new Building(type, gridX, gridZ, options);
+function placeBuildingOnGrid(type, gridX, gridZ, options = {}) {
+  if (!isCellEmpty(gridX, gridZ)) {
+    console.warn(`Cannot place building: cell (${gridX}, ${gridZ}) is occupied`);
+    return null;
+  }
+  
+  const worldPos = gridToWorld(gridX, gridZ);
+  const building = new Building(type, worldPos.x, worldPos.z, options);
+  building.gridX = gridX;
+  building.gridZ = gridZ;
   buildings.push(building);
+  grid[gridX][gridZ] = building; // Mark cell as occupied
   return building;
 }
 
-// Make placeBuilding available globally for debugging/console use
+// Legacy function for direct world coordinate placement
+function placeBuilding(type, worldX, worldZ, options = {}) {
+  const gridPos = worldToGrid(worldX, worldZ);
+  return placeBuildingOnGrid(type, gridPos.x, gridPos.z, options);
+}
+
+// Make functions available globally for debugging/console use
 window.placeBuilding = placeBuilding;
+window.placeBuildingOnGrid = placeBuildingOnGrid;
+window.gridConfig = gridConfig;
+window.grid = grid;
 
 // ============================================
 // Game Initialization
@@ -286,6 +718,9 @@ window.placeBuilding = placeBuilding;
 
 async function initGame() {
   console.log('Loading game assets...');
+  
+  // Initialize UI
+  ui.init();
   
   // Preload all models for instant spawning during gameplay
   await modelLoader.preload(['zombie', 'solarPanel', 'windTurbine', 'powerPlant']);
