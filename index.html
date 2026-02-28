@@ -3,9 +3,22 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Hackathon 2026</title>
+    <title>Power Defense</title>
   </head>
   <body>
+    <!-- Main Menu -->
+    <div id="main-menu">
+      <div class="menu-title">Power Defense</div>
+      <div class="menu-subtitle">Survive with clean energy</div>
+      <button class="menu-btn" id="new-game-btn">New Game</button>
+    </div>
+
+    <!-- Cutscene Overlay -->
+    <div id="cutscene-overlay" style="display:none;">
+      <div class="cutscene-text" id="cutscene-text"></div>
+      <div class="skip-hint">Press Space to skip</div>
+    </div>
+
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

@@ -76,6 +76,8 @@ let powerUpMode = false;
 let upgradeMode = false;
 let gameOver = false;
 let gameLoopInterval = null;
+let cutsceneActive = false;
+let gameStarted = false;
 
 const hydroElectricRate = 0.25;
 
@@ -1463,6 +1465,9 @@ window.addEventListener("resize", ()=>{
 });
 
 window.addEventListener("keydown", (e)=>{
+  // Don't process game keys during menu or cutscene
+  if (!gameStarted || cutsceneActive) return;
+
   // Toggle build mode
   if (e.key === 'b' || e.key === 'B') {
     ui.toggleBuildMode();
@@ -2557,11 +2562,219 @@ function createUpgradeShop() {
 // Game Initialization
 // ============================================
 
+// ============================================
+// Cutscene & Menu System
+// ============================================
+
+const cutsceneNarration = [
+  "The world changed when the fossil fuels ran out.",
+  "For decades, humanity ignored the warnings...\nburning oil, coal, and gas until there was nothing left.",
+  "The power grid collapsed. Cities went dark.\nWithout energy, civilization crumbled.",
+  "Then came the plague.\nSomething in the poisoned air... it turned people.",
+  "The dead began to rise — twisted by the toxic remnants\nof a world addicted to fossil fuels.",
+  "The last defense manager stationed here...\ndid not make it.",
+  "Now it's your turn.",
+  "Keep the remaining survivors alive.\nBuild renewable energy. Defend the city.\n\nThis is Power Defense.",
+];
+
+/**
+ * Play the intro cutscene: text narration on black, then camera fly-through
+ */
+function playCutscene() {
+  cutsceneActive = true;
+  const overlay = document.getElementById('cutscene-overlay');
+  const textEl = document.getElementById('cutscene-text');
+  overlay.style.display = 'flex';
+  overlay.style.opacity = '1';
+  overlay.style.background = '#000';
+
+  // Hide the 3D renderer during text phase
+  renderer.domElement.style.opacity = '0';
+
+  let lineIndex = 0;
+  let skipped = false;
+
+  function skipCutscene() {
+    if (skipped) return;
+    skipped = true;
+    // Jump straight to game
+    overlay.style.opacity = '0';
+    renderer.domElement.style.opacity = '1';
+    camera.position.set(defaultCameraPos.x, defaultCameraPos.y, defaultCameraPos.z);
+    camera.lookAt(0, 0, 0);
+    setTimeout(() => {
+      overlay.style.display = 'none';
+      cutsceneActive = false;
+      startGameplay();
+    }, 500);
+  }
+
+  function onSkipKey(e) {
+    if (e.code === 'Space' || e.code === 'Escape' || e.code === 'Enter') {
+      e.preventDefault();
+      skipCutscene();
+      window.removeEventListener('keydown', onSkipKey);
+    }
+  }
+  window.addEventListener('keydown', onSkipKey);
+
+  // Show narration lines one by one
+  function showNextLine() {
+    if (skipped) return;
+
+    if (lineIndex >= cutsceneNarration.length) {
+      // Narration done — start camera fly-through
+      textEl.classList.remove('visible');
+      textEl.classList.add('fade-out');
+      setTimeout(() => {
+        if (skipped) return;
+        startCameraAnimation(overlay, () => {
+          window.removeEventListener('keydown', onSkipKey);
+          cutsceneActive = false;
+          startGameplay();
+        });
+      }, 1000);
+      return;
+    }
+
+    // Fade out previous
+    textEl.classList.remove('visible');
+    textEl.classList.add('fade-out');
+
+    setTimeout(() => {
+      if (skipped) return;
+      textEl.innerHTML = cutsceneNarration[lineIndex].replace(/\n/g, '<br>');
+      textEl.classList.remove('fade-out');
+      textEl.classList.add('visible');
+      lineIndex++;
+
+      // How long to show this line (based on length)
+      const displayTime = Math.max(2500, cutsceneNarration[lineIndex - 1].length * 35);
+      setTimeout(showNextLine, displayTime);
+    }, 600);
+  }
+
+  // Start after a brief pause
+  setTimeout(showNextLine, 1000);
+}
+
+/**
+ * Animate camera: pan along the river left-to-right, then rise to game position
+ */
+function startCameraAnimation(overlay, onComplete) {
+  // Show the 3D scene behind the fading overlay
+  renderer.domElement.style.transition = 'opacity 1.5s ease';
+  renderer.domElement.style.opacity = '1';
+
+  // Fade the overlay from black to transparent
+  overlay.style.background = 'transparent';
+  overlay.style.transition = 'opacity 2s ease';
+  overlay.style.opacity = '0';
+
+  // Camera animation keyframes
+  // Phase 1: Pan along river (left to right, low angle)
+  // Phase 2: Rise up to game camera position
+  const phases = [
+    {
+      // Start: far left, low, looking along the city
+      startPos: { x: -35, y: 4, z: 15 },
+      startLookAt: { x: 0, y: 2, z: 0 },
+      // End: far right, still low
+      endPos: { x: 25, y: 5, z: 18 },
+      endLookAt: { x: 0, y: 2, z: 0 },
+      duration: 5000,
+    },
+    {
+      // Rise from river level up to the game camera position
+      startPos: { x: 25, y: 5, z: 18 },
+      startLookAt: { x: 0, y: 2, z: 0 },
+      endPos: { x: defaultCameraPos.x, y: defaultCameraPos.y, z: defaultCameraPos.z },
+      endLookAt: { x: 0, y: 0, z: 0 },
+      duration: 3000,
+    },
+  ];
+
+  let currentPhase = 0;
+  let phaseStartTime = performance.now();
+
+  function easeInOutCubic(t) {
+    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  }
+
+  function lerp(a, b, t) {
+    return a + (b - a) * t;
+  }
+
+  function animateCamera(timestamp) {
+    if (!cutsceneActive) return; // was skipped
+
+    const phase = phases[currentPhase];
+    const elapsed = timestamp - phaseStartTime;
+    const rawT = Math.min(elapsed / phase.duration, 1);
+    const t = easeInOutCubic(rawT);
+
+    // Interpolate position
+    camera.position.set(
+      lerp(phase.startPos.x, phase.endPos.x, t),
+      lerp(phase.startPos.y, phase.endPos.y, t),
+      lerp(phase.startPos.z, phase.endPos.z, t)
+    );
+
+    // Interpolate look-at
+    camera.lookAt(
+      lerp(phase.startLookAt.x, phase.endLookAt.x, t),
+      lerp(phase.startLookAt.y, phase.endLookAt.y, t),
+      lerp(phase.startLookAt.z, phase.endLookAt.z, t)
+    );
+
+    renderer.render(scene, camera);
+
+    if (rawT >= 1) {
+      currentPhase++;
+      if (currentPhase >= phases.length) {
+        // Animation complete
+        overlay.style.display = 'none';
+        onComplete();
+        return;
+      }
+      phaseStartTime = timestamp;
+    }
+
+    requestAnimationFrame(animateCamera);
+  }
+
+  // Position camera at start of first phase and begin
+  camera.position.set(phases[0].startPos.x, phases[0].startPos.y, phases[0].startPos.z);
+  camera.lookAt(phases[0].startLookAt.x, phases[0].startLookAt.y, phases[0].startLookAt.z);
+  renderer.render(scene, camera);
+
+  requestAnimationFrame(animateCamera);
+}
+
+/**
+ * Start actual gameplay (called after cutscene or skip)
+ */
+function startGameplay() {
+  if (gameStarted) return;
+  gameStarted = true;
+
+  // Make sure camera is in default position
+  camera.position.set(defaultCameraPos.x, defaultCameraPos.y, defaultCameraPos.z);
+  camera.lookAt(0, 0, 0);
+
+  // Show the game UI
+  if (ui.container) ui.container.style.display = 'flex';
+
+  console.log('Game starting!');
+  gameLoopInterval = window.setInterval(gameLoop, renderRate);
+}
+
 async function initGame() {
   console.log('Loading game assets...');
   
-  // Initialize UI
+  // Initialize UI (but keep it hidden until game starts)
   ui.init();
+  if (ui.container) ui.container.style.display = 'none';
   
   // Preload all models for instant spawning during gameplay
   await modelLoader.preload(['zombie', 'solarPanel', 'windTurbine', 'powerPlant', 'turret', 'missileTurret', 'map']);
@@ -2606,13 +2819,26 @@ async function initGame() {
     scene.add(mapModel);
   }
   
-  console.log('Game assets loaded! Starting game...');
-  
-  // Play new-round sound at game start
-  SoundManager.play('newRound');
-  
-  // Start the game loop
-  gameLoopInterval = window.setInterval(gameLoop, renderRate);
+
+  console.log('Game assets loaded! Waiting for player...');
+
+  // Render one frame so the scene is ready for cutscene camera fly-through
+  renderer.render(scene, camera);
+
+  // Wire up menu button
+  const newGameBtn = document.getElementById('new-game-btn');
+  newGameBtn.addEventListener('click', () => {
+    // Hide menu
+    const menu = document.getElementById('main-menu');
+    menu.style.transition = 'opacity 0.6s ease';
+    menu.style.opacity = '0';
+    setTimeout(() => {
+      menu.style.display = 'none';
+      // Start cutscene
+      playCutscene();
+      SoundManager.play('newRound');
+    }, 600);
+  });
 }
 
 // Initialize the game
