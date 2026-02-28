@@ -327,7 +327,7 @@ const ui = {
   update() {
     this.moneyDisplay.textContent = `💰 $${money}`;
     this.healthDisplay.textContent = `❤️ Health: ${health}`;
-    this.energyDisplay.textContent = `⚡ Energy: ${energy}`;
+    this.energyDisplay.textContent = `⚡ Energy: ${Math.round(energy)}`;
   }
 };
 
