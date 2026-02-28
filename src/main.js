@@ -19,6 +19,29 @@ let gameLoopInterval = null;
 const hydroElectricRate = 0.25;
 
 // ============================================
+// Round System
+// ============================================
+
+const roundConfig = {
+  baseZombiesToKill: 3,       // Zombies to kill in round 1
+  zombiesPerRoundIncrease: 2, // Additional zombies each round
+  roundTimeLimit: 30,         // Seconds per round
+  zombieHealthIncrease: 0.1, // 10% more health per round
+  zombieDamageIncrease: 0.05, // 5% more damage per round
+  zombieSpeedIncrease: 0.05,  // 5% more speed per round
+  maxZombiesIncrease: 1,      // Additional max zombies per round
+  baseMaxZombies: 3,          // Starting max zombies on screen
+  roundBonus: 100,
+};
+
+let currentRound = 0;
+let zombiesKilledThisRound = 0;
+let zombiesToKillThisRound = 0;
+let roundTimeRemaining = 0; // No timer during round 0
+let currentMaxZombies = roundConfig.baseMaxZombies;
+let zombiesLeftFromPreviousRound = 0; // Carries over if timer expires
+
+// ============================================
 // Damage Flash Effect
 // ============================================
 
@@ -356,6 +379,9 @@ const ui = {
   container: null,
   healthDisplay: null,
   energyDisplay: null,
+  roundDisplay: null,
+  zombiesDisplay: null,
+  timerDisplay: null,
   buildModeIndicator: null,
   buildMenu: null,
   selectedBuilding: null,
@@ -395,12 +421,30 @@ const ui = {
     this.energyDisplay = document.createElement('div');
     this.energyDisplay.style.cssText = 'font-size: 18px; color: #4ecdc4; margin-bottom: 10px;';
     
+    // Round info section
+    const roundSection = document.createElement('div');
+    roundSection.style.cssText = 'border-top: 1px solid #444; padding-top: 10px; margin-top: 5px;';
+    
+    this.roundDisplay = document.createElement('div');
+    this.roundDisplay.style.cssText = 'font-size: 20px; color: #ffd700; font-weight: bold; margin-bottom: 5px;';
+    
+    this.zombiesDisplay = document.createElement('div');
+    this.zombiesDisplay.style.cssText = 'font-size: 16px; color: #ff9999; margin-bottom: 3px;';
+    
+    this.timerDisplay = document.createElement('div');
+    this.timerDisplay.style.cssText = 'font-size: 16px; color: #99ccff; margin-bottom: 10px;';
+    
+    roundSection.appendChild(this.roundDisplay);
+    roundSection.appendChild(this.zombiesDisplay);
+    roundSection.appendChild(this.timerDisplay);
+    
     this.buildModeIndicator = document.createElement('div');
     this.buildModeIndicator.style.cssText = 'font-size: 14px; color: #888; margin-top: 5px; padding-top: 10px; border-top: 1px solid #444;';
     this.buildModeIndicator.textContent = '[B] Build Mode';
     
     statsPanel.appendChild(this.healthDisplay);
     statsPanel.appendChild(this.energyDisplay);
+    statsPanel.appendChild(roundSection);
     statsPanel.appendChild(this.buildModeIndicator);
     this.container.appendChild(statsPanel);
 
@@ -502,8 +546,29 @@ const ui = {
   },
 
   update() {
-    this.healthDisplay.textContent = `❤️ Health: ${playerHealth}`;
-    this.energyDisplay.textContent = `⚡ Energy: ${Math.round(energy)} Joules`;
+    this.healthDisplay.textContent = `❤️: ${Math.round(playerHealth)}`;
+    this.energyDisplay.textContent = `⚡: ${Math.round(energy)} Joules`;
+    
+    // Round info
+    if (currentRound === 0) {
+      this.roundDisplay.textContent = `🏗️ PREP PHASE`;
+      this.zombiesDisplay.textContent = `Place a building to start!`;
+      this.zombiesDisplay.style.color = '#ffd700';
+      this.timerDisplay.textContent = ``;
+    } else {
+      this.roundDisplay.textContent = `🏆 Round ${currentRound}`;
+      this.zombiesDisplay.style.color = '#ff9999';
+      this.zombiesDisplay.textContent = `💀 Zombies: ${zombiesKilledThisRound}/${zombiesToKillThisRound}`;
+      const timeLeft = Math.max(0, Math.ceil(roundTimeRemaining));
+      this.timerDisplay.textContent = `⏱️ Time: ${timeLeft}s`;
+      
+      // Flash timer when low
+      if (timeLeft <= 5 && timeLeft > 0) {
+        this.timerDisplay.style.color = '#ff4444';
+      } else {
+        this.timerDisplay.style.color = '#99ccff';
+      }
+    }
   }
 };
 
@@ -569,16 +634,88 @@ const cubeGeometry = new THREE.BoxGeometry( 1, 1, 1 );
 const cubeMaterial = new THREE.MeshBasicMaterial( { color: 0x00ff00, wireframe: true } );
 
 let zombies = [];
-const maxNumOfZombies = 10;
+let totalZombiesSpawnedThisRound = 0;
 
-function spawnZombie() {
-  if(zombies.length >= maxNumOfZombies || buildings.length == 0) {
+/**
+ * Get zombie stats scaled for current round
+ */
+function getZombieStatsForRound() {
+  const healthMultiplier = 1 + (currentRound - 1) * roundConfig.zombieHealthIncrease;
+  const damageMultiplier = 1 + (currentRound - 1) * roundConfig.zombieDamageIncrease;
+  const speedMultiplier = 1 + (currentRound - 1) * roundConfig.zombieSpeedIncrease;
+  return {
+    health: Math.round(100 * healthMultiplier),
+    damage: 0.5 * damageMultiplier,
+    speed: 0.5 * speedMultiplier
+  };
+}
+
+/**
+ * Start a new round
+ */
+function startRound() {
+  currentRound++;
+  zombiesKilledThisRound = 0;
+  totalZombiesSpawnedThisRound = 0;
+  
+  // Calculate zombies for this round (plus any leftover from previous round)
+  const newZombies = roundConfig.baseZombiesToKill + (currentRound - 1) * roundConfig.zombiesPerRoundIncrease;
+  zombiesToKillThisRound = newZombies + zombiesLeftFromPreviousRound;
+  zombiesLeftFromPreviousRound = 0;
+  
+  // Increase max zombies on screen
+  currentMaxZombies = roundConfig.baseMaxZombies + (currentRound - 1) * roundConfig.maxZombiesIncrease;
+  
+  // Reset timer
+  roundTimeRemaining = roundConfig.roundTimeLimit;
+  
+  console.log(`Round ${currentRound} started! Kill ${zombiesToKillThisRound} zombies. Max on screen: ${currentMaxZombies}`);
+}
+
+/**
+ * Check if round should end and handle progression
+ */
+function updateRound() {
+  // Round 0 is prep phase - no timer or zombie goals
+  if (currentRound === 0) return;
+  
+  // Check if all zombies killed
+  if (zombiesKilledThisRound >= zombiesToKillThisRound) {
+    // Energy bonus for completing the round
+    energy += roundConfig.roundBonus;
+    startRound();
     return;
   }
   
-  const zombie = new Zombie(-15, getRandomInRange(-15, 15), 0.5); // Spawn at edge, random Z
-  zombie.findTarget();
+  // Update timer (called every 100ms, so subtract 0.1 seconds)
+  roundTimeRemaining -= 0.1;
+  
+  // Check if time expired
+  if (roundTimeRemaining <= 0) {
+    // Carry over remaining zombies to next round
+    zombiesLeftFromPreviousRound = zombiesToKillThisRound - zombiesKilledThisRound;
+    console.log(`Time's up! ${zombiesLeftFromPreviousRound} zombies carry over to next round.`);
+    startRound();
+  }
+}
 
+/**
+ * Called when a zombie is killed
+ */
+function onZombieKilled() {
+  zombiesKilledThisRound++;
+}
+
+function spawnZombie() {
+  // Always try to max out zombies on screen (as long as there are buildings)
+  if (zombies.length >= currentMaxZombies || buildings.length == 0 || currentRound === 0) {
+    return;
+  }
+  
+  const stats = getZombieStatsForRound();
+  const zombie = new Zombie(-15, getRandomInRange(-15, 15), stats.speed, stats.health, stats.damage);
+  zombie.findTarget();
+  
   zombies.push(zombie);
 }
 
@@ -599,7 +736,10 @@ function gameLoop() {
   }
 
   if(currentTime % 1000 == 0){
-    spawnZombie();
+    // Spawn zombies until we reach max capacity
+    while (zombies.length < currentMaxZombies && buildings.length > 0 && currentRound > 0) {
+      spawnZombie();
+    }
   }
   
   for(let i = 0; i < zombies.length; i++){
@@ -612,8 +752,14 @@ function gameLoop() {
 
   // Update tracer effects
   updateTracers();
+  
+  // Update round system
+  updateRound();
 
-  energy += hydroElectricRate;
+  // Only accumulate energy after round 0
+  if (currentRound > 0) {
+    energy += hydroElectricRate;
+  }
 
   currentTime += renderRate;
   
@@ -910,7 +1056,7 @@ window.addEventListener('click', (event) => {
   }
 });
 
-function Zombie(x, z, speed) {
+function Zombie(x, z, speed, health = 100, damage = 0.5) {
   this.x = x;
   this.z = z;
   this.vX = 0;
@@ -918,8 +1064,8 @@ function Zombie(x, z, speed) {
   this.speed = speed;
 
   this.targetBuilding = null;
-  this.damage = 0.5;
-  this.health = 100; // Zombie health
+  this.damage = damage;
+  this.health = health;
   
   // Use getSync since zombie model is preloaded
   this.mesh = modelLoader.getSync('zombie');
@@ -1004,6 +1150,8 @@ function Zombie(x, z, speed) {
     if (this.mesh) {
       scene.remove(this.mesh);
     }
+    // Track kill for round system
+    onZombieKilled();
     // Remove from zombies array
     const index = zombies.indexOf(this);
     if (index > -1) zombies.splice(index, 1);
@@ -1031,8 +1179,6 @@ function Building(type, x, z, options = {}) {
   this.gridZ = null;
   this.mesh = null;
 
-  this.health = 100;
-
   const defaultScales = {
     solarPanel: 0.10,
     windTurbine: 2,     
@@ -1059,6 +1205,15 @@ function Building(type, x, z, options = {}) {
     missileTurret: 0,
   };
 
+  const defaultBuildingHealth = {
+    solarPanel: 50,
+    windTurbine: 75,
+    powerPlant: 200,
+    turret: 100,
+    missileTurret: 150,
+  };
+  this.maxHealth = defaultBuildingHealth[type] || 100;
+  this.health = this.maxHealth;
   const defaultEnergyRates = {
     solarPanel: 0.5, 
     windTurbine: 0.25,
@@ -1233,9 +1388,9 @@ function Building(type, x, z, options = {}) {
 
     // Update health bar visibility and scale
     if (this.healthBarGroup) {
-      if (this.health < 100) {
+      if (this.health < this.maxHealth) {
         this.healthBarGroup.visible = true;
-        const pct = Math.max(this.health, 0) / 100;
+        const pct = Math.max(this.health, 0) / this.maxHealth;
         this.healthBarFg.scale.x = pct;
         // Shift foreground so it stays left-aligned
         this.healthBarFg.position.x = -(1 - pct);
@@ -1359,6 +1514,12 @@ function placeBuildingOnGrid(type, gridX, gridZ, options = {}) {
   building.gridZ = gridZ;
   buildings.push(building);
   grid[gridX][gridZ] = building; // Mark cell as occupied
+  
+  // Start round 1 when first building is placed during prep phase
+  if (currentRound === 0) {
+    startRound();
+  }
+  
   return building;
 }
 
