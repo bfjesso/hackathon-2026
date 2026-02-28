@@ -301,24 +301,6 @@ const ui = {
       this.buildMenu.appendChild(btn);
     });
 
-    // Cancel button
-    const cancelBtn = document.createElement('button');
-    cancelBtn.textContent = '[ESC] Cancel';
-    cancelBtn.style.cssText = `
-      display: block;
-      width: 100%;
-      padding: 8px 15px;
-      margin-top: 10px;
-      background: #8b0000;
-      border: 2px solid #a00;
-      color: white;
-      border-radius: 5px;
-      cursor: pointer;
-      font-size: 12px;
-    `;
-    cancelBtn.addEventListener('click', () => this.cancelSelection());
-    this.buildMenu.appendChild(cancelBtn);
-
     this.container.appendChild(this.buildMenu);
     this.update();
   },
