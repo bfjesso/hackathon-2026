@@ -62,7 +62,12 @@
 		},
 		{
 			"mesh":2,
-			"name":"Cube"
+			"name":"Cube",
+			"translation":[
+				-14.978068351745605,
+				0,
+				0
+			]
 		},
 		{
 			"mesh":3,
