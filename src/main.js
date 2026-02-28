@@ -907,7 +907,7 @@ function Zombie(x, z, speed) {
       targetX = 15;
       targetZ = 0;
     } else {
-      const randBuilding = buildings[getRandomInRange(0, buildings.length - 1)];
+      const randBuilding = buildings[Math.round(getRandomInRange(0, buildings.length - 1))];
       if(randBuilding){
         this.targetBuilding = randBuilding;
         targetX = randBuilding.x;
@@ -924,6 +924,7 @@ function Zombie(x, z, speed) {
   }
 
   this.update = function update() {
+
     if (!this.mesh) return;
     
     // Check if zombie is dead
