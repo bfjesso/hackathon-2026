@@ -672,9 +672,11 @@ function Zombie(x, z, speed) {
       targetZ = 15;
     } else {
       const randBuilding = buildings[getRandomInRange(0, buildings.length - 1)];
-      this.targetBuilding = randBuilding;
-      targetX = randBuilding.x;
-      targetZ = randBuilding.z;
+      if(randBuilding){
+        this.targetBuilding = randBuilding;
+        targetX = randBuilding.x;
+        targetZ = randBuilding.z;
+      }
     }
 
     let xDiff = (targetX - this.x);
