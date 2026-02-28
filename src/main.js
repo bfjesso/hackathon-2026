@@ -365,15 +365,7 @@ function spawnZombie() {
   }
   
   const zombie = new Zombie(-15, getRandomInRange(-15, 15), 0.1); // Spawn at edge, random Z
-  const randBuilding = buildings[getRandomInRange(0, buildings.length - 1)];
-  zombie.targetBuilding = randBuilding;
-
-  let xDiff = (randBuilding.x - zombie.x);
-  let zDiff = (randBuilding.z - zombie.z);
-  const vectorMagnitude = Math.sqrt(xDiff * xDiff + zDiff * zDiff);
-
-  zombie.vX = xDiff / vectorMagnitude;
-  zombie.vZ = zDiff / vectorMagnitude;
+  zombie.findTarget();
 
   zombies.push(zombie);
 }
@@ -627,6 +619,28 @@ function Zombie(x, z, speed) {
     scene.add(this.mesh);
   }
 
+  this.findTarget = function findTarget() {
+    let targetX = 0;
+    let targetZ = 0;
+    
+    if(buildings.length == 0){
+      targetX = -15;
+      targetZ = 15;
+    } else {
+      const randBuilding = buildings[getRandomInRange(0, buildings.length - 1)];
+      this.targetBuilding = randBuilding;
+      targetX = randBuilding.x;
+      targetZ = randBuilding.z;
+    }
+
+    let xDiff = (targetX - this.x);
+    let zDiff = (targetZ - this.z);
+    const vectorMagnitude = Math.sqrt(xDiff * xDiff + zDiff * zDiff);
+
+    this.vX = xDiff / vectorMagnitude;
+    this.vZ = zDiff / vectorMagnitude;
+  }
+
   this.update = function update() {
     if (!this.mesh) return;
     
@@ -636,18 +650,28 @@ function Zombie(x, z, speed) {
     this.mesh.position.z = this.z;
 
     if(this.targetBuilding != null && this.targetBuilding != undefined){
-      let xDiff = this.targetBuilding.x - this.x;
-      let zDiff = this.targetBuilding.z - this.z;
-      let distanceToTarget = Math.sqrt(xDiff * xDiff + zDiff * zDiff);
+      if(this.targetBuilding.health <= 0){
+          this.targetBuilding = null;
+      } else {
+        let xDiff = this.targetBuilding.x - this.x;
+        let zDiff = this.targetBuilding.z - this.z;
+        let distanceToTarget = Math.sqrt(xDiff * xDiff + zDiff * zDiff);
 
-      if(distanceToTarget < 2){
+        if(distanceToTarget < 2){
+          this.vX = 0;
+          this.vZ = 0;
+          
+          this.targetBuilding.health -= this.damage;
+        }
+      }
+    } else{
+      if(this.x > 15 || this.x < -15 || this.z > 15 || this.z < -15){
         this.vX = 0;
         this.vZ = 0;
-        
-        this.targetBuilding.health -= this.damage;
       }
     }
     
+    this.findTarget();
   }
 
   this.destroy = function destroy() {
