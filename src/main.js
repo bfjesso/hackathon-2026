@@ -1446,10 +1446,21 @@ function Zombie(x, z, speed, health = 100, damage = 0.5) {
   this.health = powerUpState.instaKillActive ? 1 : 100; 
   
   // Use getSync since zombie model is preloaded
-  this.mesh = modelLoader.getSync('zombie');
-  if (this.mesh) {
+  const zombieModel = modelLoader.getSync('zombie');
+  if (zombieModel) {
+    zombieModel.scale.setScalar(0.2); // Zombie model is ~8 units, scale to ~0.8
+
+    // Center the model within a container group (same approach as buildings)
+    const box = new THREE.Box3().setFromObject(zombieModel);
+    const center = box.getCenter(new THREE.Vector3());
+    const minY = box.min.y;
+
+    this.mesh = new THREE.Group();
+    // Offset so visual center (X,Z) is at origin and feet sit at Y=0
+    zombieModel.position.set(-center.x, -minY, -center.z);
+    this.mesh.add(zombieModel);
+
     this.mesh.position.set(x, 0, z);
-    this.mesh.scale.setScalar(0.2); // Zombie model is ~8 units, scale to ~0.8
     scene.add(this.mesh);
   }
 
