@@ -447,6 +447,7 @@ const ui = {
   container: null,
   healthDisplay: null,
   energyDisplay: null,
+  energyRateDisplay: null,
   roundDisplay: null,
   zombiesDisplay: null,
   timerDisplay: null,
@@ -493,7 +494,10 @@ const ui = {
     this.healthDisplay.style.cssText = 'font-size: 18px; color: #ff6b6b; margin-bottom: 5px;';
     
     this.energyDisplay = document.createElement('div');
-    this.energyDisplay.style.cssText = 'font-size: 18px; color: #4ecdc4; margin-bottom: 10px;';
+    this.energyDisplay.style.cssText = 'font-size: 18px; color: #4ecdc4; margin-bottom: 2px;';
+    
+    this.energyRateDisplay = document.createElement('div');
+    this.energyRateDisplay.style.cssText = 'font-size: 13px; color: #3ba89f; margin-bottom: 10px;';
     
     // Round info section
     const roundSection = document.createElement('div');
@@ -526,6 +530,7 @@ const ui = {
 
     statsPanel.appendChild(this.healthDisplay);
     statsPanel.appendChild(this.energyDisplay);
+    statsPanel.appendChild(this.energyRateDisplay);
     statsPanel.appendChild(roundSection);
     statsPanel.appendChild(this.buildModeIndicator);
     statsPanel.appendChild(this.powerUpModeIndicator);
@@ -1016,6 +1021,18 @@ const ui = {
   update() {
     this.healthDisplay.textContent = `❤️: ${Math.round(playerHealth)}`;
     this.energyDisplay.textContent = `⚡: ${Math.round(energy)} Joules`;
+    
+    // Calculate total energy rate (per tick)
+    let totalRatePerTick = hydroElectricRate; // Base passive rate
+    buildings.forEach(b => {
+      if (b.energyRate) totalRatePerTick += b.energyRate;
+    });
+    const multiplier = powerUpState.surgeActive ? 2 : 1;
+    totalRatePerTick *= multiplier;
+    // Convert to per-second (renderRate is 100ms, so 10 ticks per second)
+    const ticksPerSecond = 1000 / renderRate;
+    const totalRatePerSecond = totalRatePerTick * ticksPerSecond;
+    this.energyRateDisplay.textContent = `   +${totalRatePerSecond.toFixed(1)}/sec${multiplier > 1 ? ' (2x)' : ''}`;
     
     // Round info
     if (currentRound === 0) {
