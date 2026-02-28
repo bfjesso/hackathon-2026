@@ -10,7 +10,7 @@ function getRandomInRange(min, max) {
 // Game State
 // ============================================
 
-let energy = 500;
+let energy = 500000000;
 let playerHealth = 100;
 let buildMode = false;
 let powerUpMode = false;
@@ -344,6 +344,7 @@ const ui = {
   powerUpModeIndicator: null,
   buildMenu: null,
   powerUpMenu: null,
+  activeBuffBar: null,
   selectedBuilding: null,
 
 
@@ -395,6 +396,20 @@ const ui = {
     statsPanel.appendChild(this.buildModeIndicator);
     statsPanel.appendChild(this.powerUpModeIndicator);
     this.container.appendChild(statsPanel);
+
+    // Active power-up HUD bar (top center)
+    this.activeBuffBar = document.createElement('div');
+    this.activeBuffBar.style.cssText = `
+      position: fixed;
+      top: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 12px;
+      z-index: 200;
+      pointer-events: none;
+    `;
+    document.body.appendChild(this.activeBuffBar);
 
     // Build menu (right side) - hidden by default
     this.buildMenu = document.createElement('div');
@@ -537,6 +552,7 @@ const ui = {
         text-align: left;
         transition: background 0.15s;
         position: relative;
+        overflow: hidden;
       `;
       btn.addEventListener('mouseenter', (e) => {
         btn.style.background = 'rgba(46, 139, 87, 0.35)';
@@ -847,6 +863,7 @@ function gameLoop() {
 
   // Update power-up button cooldown visuals
   if (ui.powerUpMenu) {
+    const cdMaxes = { shield: 45000, instaKill: 60000, surge: 30000 };
     ui.powerUpMenu.querySelectorAll('button').forEach(btn => {
       const key = btn.dataset.powerUpType;
       if (!key) return;
@@ -854,23 +871,107 @@ function gameLoop() {
       const cd = powerUpState[cdKey];
       if (cd > 0) {
         const secs = Math.ceil(cd / 1000);
-        btn.style.opacity = '0.4';
+        const pct = Math.max(0, cd / cdMaxes[key]) * 100;
         btn.style.cursor = 'not-allowed';
-        // Show cooldown remaining in the button
+        btn.style.color = '#777';
+        // Cooldown overlay
+        let cdOverlay = btn.querySelector('.cd-overlay');
+        if (!cdOverlay) {
+          cdOverlay = document.createElement('div');
+          cdOverlay.className = 'cd-overlay';
+          cdOverlay.style.cssText = `
+            position: absolute; top:0; left:0; bottom:0;
+            background: rgba(0,0,0,0.55);
+            pointer-events: none;
+            transition: width 0.1s linear;
+          `;
+          btn.appendChild(cdOverlay);
+        }
+        cdOverlay.style.width = pct + '%';
+        // Centered countdown text
         let cdLabel = btn.querySelector('.cd-label');
         if (!cdLabel) {
-          cdLabel = document.createElement('span');
+          cdLabel = document.createElement('div');
           cdLabel.className = 'cd-label';
-          cdLabel.style.cssText = 'color:#ff6666;font-size:11px;float:right;margin-left:8px;';
+          cdLabel.style.cssText = `
+            position:absolute; top:0; left:0; right:0; bottom:0;
+            display:flex; align-items:center; justify-content:center;
+            color:#ff8888; font-size:14px; font-weight:bold;
+            text-shadow: 0 0 6px rgba(0,0,0,0.8);
+            pointer-events:none; z-index:2;
+          `;
           btn.appendChild(cdLabel);
         }
         cdLabel.textContent = secs + 's';
       } else {
-        btn.style.opacity = '1';
         btn.style.cursor = 'pointer';
+        btn.style.color = '#ccc';
+        const cdOverlay = btn.querySelector('.cd-overlay');
+        if (cdOverlay) cdOverlay.remove();
         const cdLabel = btn.querySelector('.cd-label');
         if (cdLabel) cdLabel.remove();
       }
+    });
+  }
+
+  // === Active Power-Up HUD Icons ===
+  const buffIcons = {
+    shield:    { emoji: '🛡️', color: '#44aaff', label: 'SHIELD', timer: powerUpState.shieldTimer },
+    instaKill: { emoji: '💀', color: '#ff4444', label: 'INSTA KILL', timer: powerUpState.instaKillTimer },
+    surge:     { emoji: '⚡', color: '#ffcc00', label: 'SURGE', timer: powerUpState.surgeTimer },
+  };
+  if (ui.activeBuffBar) {
+    // Remove icons for expired buffs, add/update active ones
+    const existing = ui.activeBuffBar.querySelectorAll('[data-buff]');
+    const activeKeys = new Set();
+    for (const [key, info] of Object.entries(buffIcons)) {
+      const timerKey = key + 'Active';
+      if (!powerUpState[timerKey]) continue;
+      activeKeys.add(key);
+      let icon = ui.activeBuffBar.querySelector(`[data-buff="${key}"]`);
+      if (!icon) {
+        icon = document.createElement('div');
+        icon.dataset.buff = key;
+        icon.style.cssText = `
+          display: flex; flex-direction: column; align-items: center;
+          background: linear-gradient(180deg, rgba(0,0,0,0.75), rgba(0,0,0,0.55));
+          border: 2px solid ${info.color};
+          border-radius: 10px;
+          padding: 6px 10px 4px;
+          min-width: 56px;
+          box-shadow: 0 0 12px ${info.color}55, inset 0 0 8px ${info.color}22;
+        `;
+        icon.innerHTML = `
+          <div style="font-size:24px;line-height:1;">${info.emoji}</div>
+          <div class="buff-label" style="font-size:8px;color:${info.color};letter-spacing:1px;margin-top:2px;font-weight:bold;font-family:'Segoe UI',Arial,sans-serif;">${info.label}</div>
+          <div class="buff-timer" style="font-size:12px;color:#fff;font-weight:bold;font-family:'Segoe UI',Arial,sans-serif;margin-top:1px;"></div>
+        `;
+        ui.activeBuffBar.appendChild(icon);
+      }
+      const secs = Math.ceil(info.timer / 1000);
+      icon.querySelector('.buff-timer').textContent = secs + 's';
+      // Flash when about to expire (last 3 seconds)
+      if (info.timer <= 3000 && info.timer > 0) {
+        const flash = Math.sin(Date.now() * 0.012) > 0;
+        icon.style.opacity = flash ? '1' : '0.3';
+        icon.style.borderColor = flash ? info.color : '#666';
+      } else {
+        icon.style.opacity = '1';
+        icon.style.borderColor = info.color;
+      }
+    }
+    // Remove icons no longer active
+    existing.forEach(el => {
+      if (!activeKeys.has(el.dataset.buff)) el.remove();
+    });
+  }
+
+  // === Flash shield visuals when about to expire ===
+  if (powerUpState.shieldActive && powerUpState.shieldTimer <= 3000 && powerUpState.shieldTimer > 0) {
+    const flash = Math.sin(Date.now() * 0.012) > 0;
+    if (shieldMesh) shieldMesh.visible = flash;
+    buildings.forEach(b => {
+      if (b.shieldGlow) b.shieldGlow.visible = flash;
     });
   }
 
