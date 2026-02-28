@@ -53,7 +53,7 @@ const modelLoader = {
   // Available models mapped to their paths
   models: {
     zombie: '/models/low_poly_zombie/scene.gltf',
-    solarPanel: '/models/cartoon_low_poly_solar_panel/scene.gltf',
+    solarPanel: '/models/painel_solar/scene.gltf',
     windTurbine: '/models/low_poly_wind_turbine/scene.gltf',
     powerPlant: '/models/power_plant_level_two/scene.gltf',
   },
@@ -705,14 +705,14 @@ function Building(type, x, z, options = {}) {
   this.health = 100;
 
   const defaultScales = {
-    solarPanel: 0.005,    // Model is ~5400 units, scale to fit grid cell
-    windTurbine: 1.5,     // Model is ~4 units, scale to ~1.2 units
-    powerPlant: 0.025,    // Model is ~600 units, scale to fit grid cell
+    solarPanel: 0.10,
+    windTurbine: 1.5,     
+    powerPlant: 0.025,    
   };
 
   // Manual position corrections for off-center models (in world units, applied after scaling)
   const positionCorrections = {
-    solarPanel: { x: 6, y: 0, z: 0 },  // Solar panel model is offset to the left
+    solarPanel: { x: 0, y: 0, z: 0 },  
     windTurbine: { x: 0, y: 0, z: 0 },
     powerPlant: { x: 0, y: 0, z: 0 },
   };
