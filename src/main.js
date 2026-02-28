@@ -13,10 +13,24 @@ function getRandomInRange(min, max) {
 let energy = 500;
 let playerHealth = 100;
 let buildMode = false;
+let powerUpMode = false;
 let gameOver = false;
 let gameLoopInterval = null;
 
 const hydroElectricRate = 0.25;
+
+// Active power-up state
+const powerUpState = {
+  shieldActive: false,
+  shieldTimer: 0,
+  shieldCooldown: 0,
+  instaKillActive: false,
+  instaKillTimer: 0,
+  instaKillCooldown: 0,
+  surgeActive: false,
+  surgeTimer: 0,
+  surgeCooldown: 0,
+};
 
 // ============================================
 // Round System
@@ -350,8 +364,12 @@ const ui = {
   zombiesDisplay: null,
   timerDisplay: null,
   buildModeIndicator: null,
+  powerUpModeIndicator: null,
   buildMenu: null,
+  powerUpMenu: null,
+  activeBuffBar: null,
   selectedBuilding: null,
+
 
   init() {
     // Create UI container
@@ -408,64 +426,254 @@ const ui = {
     this.buildModeIndicator = document.createElement('div');
     this.buildModeIndicator.style.cssText = 'font-size: 14px; color: #888; margin-top: 5px; padding-top: 10px; border-top: 1px solid #444;';
     this.buildModeIndicator.textContent = '[B] Build Mode';
-    
+
+    this.powerUpModeIndicator = document.createElement('div');
+    this.powerUpModeIndicator.style.cssText = 'font-size: 14px; color: #888; margin-top: 5px;';
+    this.powerUpModeIndicator.textContent = '[P] Power Ups';
+
     statsPanel.appendChild(this.healthDisplay);
     statsPanel.appendChild(this.energyDisplay);
     statsPanel.appendChild(roundSection);
     statsPanel.appendChild(this.buildModeIndicator);
+    statsPanel.appendChild(this.powerUpModeIndicator);
     this.container.appendChild(statsPanel);
+
+    // Active power-up HUD bar (top center)
+    this.activeBuffBar = document.createElement('div');
+    this.activeBuffBar.style.cssText = `
+      position: fixed;
+      top: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 12px;
+      z-index: 200;
+      pointer-events: none;
+    `;
+    document.body.appendChild(this.activeBuffBar);
 
     // Build menu (right side) - hidden by default
     this.buildMenu = document.createElement('div');
     this.buildMenu.style.cssText = `
-      background: rgba(0, 0, 0, 0.7);
-      padding: 15px;
-      border-radius: 10px;
+      background: linear-gradient(135deg, rgba(20, 30, 20, 0.92), rgba(10, 18, 10, 0.95));
+      padding: 18px;
+      border-radius: 6px;
       color: white;
       pointer-events: auto;
       display: none;
+      border: 1px solid #2e8b57;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+      font-family: 'Segoe UI', Arial, sans-serif;
+      overflow: visible;
+      position: relative;
     `;
     
     const menuTitle = document.createElement('div');
     menuTitle.textContent = 'BUILD';
-    menuTitle.style.cssText = 'font-size: 14px; margin-bottom: 10px; text-align: center; opacity: 0.7;';
+    menuTitle.style.cssText = 'font-size: 16px; margin-bottom: 12px; text-align: center; color: #5dde8e; font-weight: bold; letter-spacing: 3px; text-transform: uppercase;';
     this.buildMenu.appendChild(menuTitle);
 
     const buildingTypes = [
-      { key: 'solarPanel', name: 'Solar Panel', cost: 100, hotkey: '1' },
-      { key: 'windTurbine', name: 'Wind Turbine', cost: 150, hotkey: '2' },
-      { key: 'powerPlant', name: 'Power Plant', cost: 300, hotkey: '3' },
-      { key: 'turret', name: 'Turret', cost: 200, hotkey: '4' },
-      { key: 'missileTurret', name: 'Missile Turret', cost: 400, hotkey: '5' },
+      { key: 'solarPanel', name: 'Solar Panel', cost: 100, hotkey: '1', desc: 'Generates energy from sunlight' },
+      { key: 'windTurbine', name: 'Wind Turbine', cost: 150, hotkey: '2', desc: 'Generates energy from wind' },
+      { key: 'powerPlant', name: 'Power Plant', cost: 300, hotkey: '3', desc: 'High output energy generator' },
+      { key: 'turret', name: 'Turret', cost: 200, hotkey: '4', desc: 'Shoots nearby zombies' },
+      { key: 'missileTurret', name: 'Missile Turret', cost: 400, hotkey: '5', desc: 'Splash damage missiles' },
     ];
 
     buildingTypes.forEach(building => {
       const btn = document.createElement('button');
-      btn.textContent = `[${building.hotkey}] ${building.name} ${building.cost} Joules`;
+      btn.innerHTML = `<span style="opacity:0.5;margin-right:6px;">${building.hotkey}</span> ${building.name} <span style="float:right;color:#5dde8e;">${building.cost}</span>`;
       btn.dataset.buildingType = building.key;
       btn.dataset.cost = building.cost;
       btn.style.cssText = `
         display: block;
         width: 100%;
-        padding: 10px 15px;
-        margin-bottom: 5px;
-        background: #333;
-        border: 2px solid #555;
-        color: white;
-        border-radius: 5px;
+        padding: 8px 12px;
+        margin-bottom: 4px;
+        background: rgba(46, 139, 87, 0.15);
+        border: 1px solid rgba(46, 139, 87, 0.3);
+        color: #ccc;
+        border-radius: 4px;
         cursor: pointer;
-        font-size: 14px;
-        transition: all 0.2s;
+        font-size: 13px;
+        font-family: 'Segoe UI', Arial, sans-serif;
+        text-align: left;
+        transition: background 0.15s;
       `;
-      btn.addEventListener('mouseenter', () => btn.style.borderColor = '#4ecdc4');
+      btn.addEventListener('mouseenter', () => {
+        btn.style.background = 'rgba(46, 139, 87, 0.35)';
+        btn.style.color = '#fff';
+        if (this.selectedBuilding === building.key) btn.style.borderColor = '#ffd700';
+      });
       btn.addEventListener('mouseleave', () => {
-        btn.style.borderColor = this.selectedBuilding === building.key ? '#ffd700' : '#555';
+        btn.style.background = 'rgba(46, 139, 87, 0.15)';
+        btn.style.color = '#ccc';
+        btn.style.borderColor = this.selectedBuilding === building.key ? '#ffd700' : 'rgba(46, 139, 87, 0.3)';
       });
       btn.addEventListener('click', () => this.selectBuilding(building.key, building.cost));
       this.buildMenu.appendChild(btn);
     });
 
     this.container.appendChild(this.buildMenu);
+
+    // ============================================
+    // Power-Ups Menu (similar to build menu)
+    // ============================================
+    this.powerUpMenu = document.createElement('div');
+    this.powerUpMenu.style.cssText = `
+      background: linear-gradient(135deg, rgba(20, 30, 20, 0.92), rgba(10, 18, 10, 0.95));
+      padding: 18px;
+      border-radius: 6px;
+      color: white;
+      pointer-events: auto;
+      display: none;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      min-width: 300px;
+      border: 1px solid #2e8b57;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+      font-family: 'Segoe UI', Arial, sans-serif;
+      overflow: visible;
+    `;
+    
+    const powerUpTitle = document.createElement('div');
+    powerUpTitle.textContent = 'POWER UPS';
+    powerUpTitle.style.cssText = 'font-size: 16px; margin-bottom: 12px; text-align: center; color: #5dde8e; font-weight: bold; letter-spacing: 3px; text-transform: uppercase;';
+    this.powerUpMenu.appendChild(powerUpTitle);
+
+    const powerUps = [
+      { key: 'shield', name: 'Shield', cost: 500, hotkey: '1', desc: 'Protects player and buildings for 10 seconds (45s cooldown)' },
+      { key: 'instaKill', name: 'Insta Kill', cost: 750, hotkey: '2', desc: 'Sets all zombies to 1 HP for 10 seconds, including new spawns (60s cooldown)' },
+      { key: 'surge', name: 'Surge', cost: 400, hotkey: '3', desc: 'Doubles energy generation for 10 seconds (30s cooldown)' },
+    ];
+
+    // Tooltip element for power-up descriptions
+    this.powerUpTooltip = document.createElement('div');
+    this.powerUpTooltip.style.cssText = `
+      position: absolute;
+      left: calc(100% + 10px);
+      top: 0;
+      background: linear-gradient(135deg, rgba(15, 25, 15, 0.95), rgba(8, 14, 8, 0.97));
+      border: 1px solid #2e8b57;
+      border-radius: 4px;
+      padding: 10px 14px;
+      color: #ddd;
+      font-size: 12px;
+      min-width: 180px;
+      pointer-events: none;
+      display: none;
+      box-shadow: 0 3px 12px rgba(0,0,0,0.5);
+      font-family: 'Segoe UI', Arial, sans-serif;
+      line-height: 1.5;
+      z-index: 10;
+    `;
+    this.powerUpMenu.style.position = 'fixed';
+    this.powerUpMenu.appendChild(this.powerUpTooltip);
+
+    powerUps.forEach(powerUp => {
+      const btn = document.createElement('button');
+      btn.innerHTML = `<span style="opacity:0.5;margin-right:6px;">${powerUp.hotkey}</span> ${powerUp.name} <span style="float:right;color:#5dde8e;">${powerUp.cost}</span>`;
+      btn.dataset.powerUpType = powerUp.key;
+      btn.dataset.cost = powerUp.cost;
+      btn.style.cssText = `
+        display: block;
+        width: 100%;
+        padding: 8px 12px;
+        margin-bottom: 4px;
+        background: rgba(46, 139, 87, 0.15);
+        border: 1px solid rgba(46, 139, 87, 0.3);
+        color: #ccc;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 13px;
+        font-family: 'Segoe UI', Arial, sans-serif;
+        text-align: left;
+        transition: background 0.15s;
+        position: relative;
+        overflow: hidden;
+      `;
+      btn.addEventListener('mouseenter', (e) => {
+        btn.style.background = 'rgba(46, 139, 87, 0.35)';
+        btn.style.color = '#fff';
+        // Show tooltip
+        this.powerUpTooltip.innerHTML = `<div style="color:#5dde8e;font-weight:bold;margin-bottom:4px;">${powerUp.name}</div><div style="margin-bottom:6px;">${powerUp.desc}</div><div style="color:#5dde8e;">Cost: ${powerUp.cost} Joules</div>`;
+        this.powerUpTooltip.style.display = 'block';
+        // Position tooltip vertically aligned with hovered button
+        const menuRect = this.powerUpMenu.getBoundingClientRect();
+        const btnRect = btn.getBoundingClientRect();
+        this.powerUpTooltip.style.top = (btnRect.top - menuRect.top) + 'px';
+      });
+      btn.addEventListener('mouseleave', () => {
+        btn.style.background = 'rgba(46, 139, 87, 0.15)';
+        btn.style.color = '#ccc';
+        this.powerUpTooltip.style.display = 'none';
+      });
+      btn.addEventListener('click', () => this.buyPowerUp(powerUp.key, powerUp.cost));
+      this.powerUpMenu.appendChild(btn);
+    });
+
+    const closeHint = document.createElement('div');
+    closeHint.textContent = '[P] or [Esc] to close';
+    closeHint.style.cssText = 'font-size: 10px; text-align: center; opacity: 0.35; margin-top: 10px;';
+    this.powerUpMenu.appendChild(closeHint);
+
+    document.body.appendChild(this.powerUpMenu);
+
+    this.update();
+  },
+
+  buyPowerUp(type, cost) {
+    if (energy < cost) {
+      console.log('Not enough energy for power-up!');
+      return;
+    }
+    // Check cooldown
+    const cooldownKey = type + 'Cooldown';
+    if (powerUpState[cooldownKey] > 0) {
+      console.log(`${type} is on cooldown! ${Math.ceil(powerUpState[cooldownKey] / 1000)}s remaining.`);
+      return;
+    }
+    energy -= cost;
+
+    switch (type) {
+      case 'shield':
+        powerUpState.shieldActive = true;
+        powerUpState.shieldTimer = 10000;
+        powerUpState.shieldCooldown = 45000;
+        if (shieldMesh) shieldMesh.visible = true;
+        // Add glowing blue floor under every building
+        buildings.forEach(b => {
+          if (!b.shieldGlow && b.mesh) {
+            const glow = new THREE.Mesh(
+              new THREE.CircleGeometry(1.8, 32),
+              new THREE.MeshBasicMaterial({ color: 0x44aaff, transparent: true, opacity: 0.45, side: THREE.DoubleSide })
+            );
+            glow.rotation.x = -Math.PI / 2;
+            glow.position.set(b.x, 0.05, b.z);
+            scene.add(glow);
+            b.shieldGlow = glow;
+          }
+        });
+        console.log('Shield activated for 10s!');
+        break;
+      case 'instaKill':
+        powerUpState.instaKillActive = true;
+        powerUpState.instaKillTimer = 10000;
+        powerUpState.instaKillCooldown = 60000;
+        // Set all current zombies to 1 health
+        zombies.forEach(z => { z.health = Math.min(z.health, 1); });
+        console.log('Insta Kill! All zombies set to 1 HP for 10s.');
+        break;
+      case 'surge':
+        powerUpState.surgeActive = true;
+        powerUpState.surgeTimer = 10000;
+        powerUpState.surgeCooldown = 30000;
+        console.log('Surge activated for 10s! Double energy gen.');
+        break;
+    }
     this.update();
   },
 
@@ -474,7 +682,7 @@ const ui = {
     this.selectedBuildingCost = cost;
     // Update button styles
     this.buildMenu.querySelectorAll('button').forEach(btn => {
-      btn.style.borderColor = btn.dataset.buildingType === type ? '#ffd700' : '#555';
+      btn.style.borderColor = btn.dataset.buildingType === type ? '#ffd700' : 'rgba(46, 139, 87, 0.3)';
     });
     console.log(`Selected: ${type}`);
   },
@@ -483,16 +691,23 @@ const ui = {
     this.selectedBuilding = null;
     this.selectedBuildingCost = 0;
     this.buildMenu.querySelectorAll('button').forEach(btn => {
-      btn.style.borderColor = '#555';
+      btn.style.borderColor = 'rgba(46, 139, 87, 0.3)';
     });
   },
 
   toggleBuildMode() {
+    if (powerUpMode) this.togglePowerUpMode(); // close power-ups first
     buildMode = !buildMode;
     this.updateBuildMode();
     if (!buildMode) {
       this.cancelSelection();
     }
+  },
+
+  togglePowerUpMode() {
+    if (buildMode) this.toggleBuildMode(); // close build mode first
+    powerUpMode = !powerUpMode;
+    this.updatePowerUpMode();
   },
 
   updateBuildMode() {
@@ -519,6 +734,18 @@ const ui = {
     
     // Show/hide grid cell rings
     updateGridRings();
+  },
+
+  updatePowerUpMode() {
+    this.powerUpMenu.style.display = powerUpMode ? 'block' : 'none';
+    
+    if (powerUpMode) {
+      this.powerUpModeIndicator.textContent = 'POWER UPS [P to exit]';
+      this.powerUpModeIndicator.style.color = '#5dde8e';
+    } else {
+      this.powerUpModeIndicator.textContent = '[P] Power Ups';
+      this.powerUpModeIndicator.style.color = '#888';
+    }
   },
 
   update() {
@@ -736,9 +963,171 @@ function gameLoop() {
   // Update round system
   updateRound();
 
-  // Only accumulate energy after round 0
+  // Animate power-up shop character
+  if (shopCharacter) {
+    shopCharacter.position.y = 0.45 + Math.sin(Date.now() * 0.003) * 0.1;
+  }
+  if (shopSign) {
+    shopSign.position.y = 3.8 + Math.sin(Date.now() * 0.002) * 0.05;
+  }
+
+  // Tick power-up timers
+  if (powerUpState.shieldTimer > 0) {
+    powerUpState.shieldTimer -= renderRate;
+    if (powerUpState.shieldTimer <= 0) {
+      powerUpState.shieldActive = false;
+      powerUpState.shieldTimer = 0;
+      if (shieldMesh) shieldMesh.visible = false;
+      // Remove all building shield glows
+      buildings.forEach(b => {
+        if (b.shieldGlow) {
+          scene.remove(b.shieldGlow);
+          b.shieldGlow = null;
+        }
+      });
+    }
+  }
+
+  // Animate shield dome
+  if (shieldMesh && shieldMesh.visible) {
+    shieldMesh.rotation.y += 0.008;
+  }
+  if (powerUpState.instaKillTimer > 0) {
+    powerUpState.instaKillTimer -= renderRate;
+    if (powerUpState.instaKillTimer <= 0) {
+      powerUpState.instaKillActive = false;
+      powerUpState.instaKillTimer = 0;
+    }
+  }
+  if (powerUpState.surgeTimer > 0) {
+    powerUpState.surgeTimer -= renderRate;
+    if (powerUpState.surgeTimer <= 0) {
+      powerUpState.surgeActive = false;
+      powerUpState.surgeTimer = 0;
+    }
+  }
   if (currentRound > 0) {
-    energy += hydroElectricRate;
+    energy += hydroElectricRate * (powerUpState.surgeActive ? 2 : 1);
+  }
+  
+
+  // Tick cooldowns
+  if (powerUpState.shieldCooldown > 0) powerUpState.shieldCooldown -= renderRate;
+  if (powerUpState.instaKillCooldown > 0) powerUpState.instaKillCooldown -= renderRate;
+  if (powerUpState.surgeCooldown > 0) powerUpState.surgeCooldown -= renderRate;
+
+  // Update power-up button cooldown visuals
+  if (ui.powerUpMenu) {
+    const cdMaxes = { shield: 45000, instaKill: 60000, surge: 30000 };
+    ui.powerUpMenu.querySelectorAll('button').forEach(btn => {
+      const key = btn.dataset.powerUpType;
+      if (!key) return;
+      const cdKey = key + 'Cooldown';
+      const cd = powerUpState[cdKey];
+      if (cd > 0) {
+        const secs = Math.ceil(cd / 1000);
+        const pct = Math.max(0, cd / cdMaxes[key]) * 100;
+        btn.style.cursor = 'not-allowed';
+        btn.style.color = '#777';
+        // Cooldown overlay
+        let cdOverlay = btn.querySelector('.cd-overlay');
+        if (!cdOverlay) {
+          cdOverlay = document.createElement('div');
+          cdOverlay.className = 'cd-overlay';
+          cdOverlay.style.cssText = `
+            position: absolute; top:0; left:0; bottom:0;
+            background: rgba(0,0,0,0.55);
+            pointer-events: none;
+            transition: width 0.1s linear;
+          `;
+          btn.appendChild(cdOverlay);
+        }
+        cdOverlay.style.width = pct + '%';
+        // Centered countdown text
+        let cdLabel = btn.querySelector('.cd-label');
+        if (!cdLabel) {
+          cdLabel = document.createElement('div');
+          cdLabel.className = 'cd-label';
+          cdLabel.style.cssText = `
+            position:absolute; top:0; left:0; right:0; bottom:0;
+            display:flex; align-items:center; justify-content:center;
+            color:#ff8888; font-size:14px; font-weight:bold;
+            text-shadow: 0 0 6px rgba(0,0,0,0.8);
+            pointer-events:none; z-index:2;
+          `;
+          btn.appendChild(cdLabel);
+        }
+        cdLabel.textContent = secs + 's';
+      } else {
+        btn.style.cursor = 'pointer';
+        btn.style.color = '#ccc';
+        const cdOverlay = btn.querySelector('.cd-overlay');
+        if (cdOverlay) cdOverlay.remove();
+        const cdLabel = btn.querySelector('.cd-label');
+        if (cdLabel) cdLabel.remove();
+      }
+    });
+  }
+
+  // === Active Power-Up HUD Icons ===
+  const buffIcons = {
+    shield:    { emoji: '🛡️', color: '#44aaff', label: 'SHIELD', timer: powerUpState.shieldTimer },
+    instaKill: { emoji: '💀', color: '#ff4444', label: 'INSTA KILL', timer: powerUpState.instaKillTimer },
+    surge:     { emoji: '⚡', color: '#ffcc00', label: 'SURGE', timer: powerUpState.surgeTimer },
+  };
+  if (ui.activeBuffBar) {
+    // Remove icons for expired buffs, add/update active ones
+    const existing = ui.activeBuffBar.querySelectorAll('[data-buff]');
+    const activeKeys = new Set();
+    for (const [key, info] of Object.entries(buffIcons)) {
+      const timerKey = key + 'Active';
+      if (!powerUpState[timerKey]) continue;
+      activeKeys.add(key);
+      let icon = ui.activeBuffBar.querySelector(`[data-buff="${key}"]`);
+      if (!icon) {
+        icon = document.createElement('div');
+        icon.dataset.buff = key;
+        icon.style.cssText = `
+          display: flex; flex-direction: column; align-items: center;
+          background: linear-gradient(180deg, rgba(0,0,0,0.75), rgba(0,0,0,0.55));
+          border: 2px solid ${info.color};
+          border-radius: 10px;
+          padding: 6px 10px 4px;
+          min-width: 56px;
+          box-shadow: 0 0 12px ${info.color}55, inset 0 0 8px ${info.color}22;
+        `;
+        icon.innerHTML = `
+          <div style="font-size:24px;line-height:1;">${info.emoji}</div>
+          <div class="buff-label" style="font-size:8px;color:${info.color};letter-spacing:1px;margin-top:2px;font-weight:bold;font-family:'Segoe UI',Arial,sans-serif;">${info.label}</div>
+          <div class="buff-timer" style="font-size:12px;color:#fff;font-weight:bold;font-family:'Segoe UI',Arial,sans-serif;margin-top:1px;"></div>
+        `;
+        ui.activeBuffBar.appendChild(icon);
+      }
+      const secs = Math.ceil(info.timer / 1000);
+      icon.querySelector('.buff-timer').textContent = secs + 's';
+      // Flash when about to expire (last 3 seconds)
+      if (info.timer <= 3000 && info.timer > 0) {
+        const flash = Math.sin(Date.now() * 0.012) > 0;
+        icon.style.opacity = flash ? '1' : '0.3';
+        icon.style.borderColor = flash ? info.color : '#666';
+      } else {
+        icon.style.opacity = '1';
+        icon.style.borderColor = info.color;
+      }
+    }
+    // Remove icons no longer active
+    existing.forEach(el => {
+      if (!activeKeys.has(el.dataset.buff)) el.remove();
+    });
+  }
+
+  // === Flash shield visuals when about to expire ===
+  if (powerUpState.shieldActive && powerUpState.shieldTimer <= 3000 && powerUpState.shieldTimer > 0) {
+    const flash = Math.sin(Date.now() * 0.012) > 0;
+    if (shieldMesh) shieldMesh.visible = flash;
+    buildings.forEach(b => {
+      if (b.shieldGlow) b.shieldGlow.visible = flash;
+    });
   }
 
   currentTime += renderRate;
@@ -823,6 +1212,12 @@ window.addEventListener("keydown", (e)=>{
     ui.toggleBuildMode();
     return;
   }
+
+  // Toggle power-up mode
+  if (e.key === 'p' || e.key === 'P') {
+    ui.togglePowerUpMode();
+    return;
+  }
   
   // Building hotkeys (only work in build mode)
   if (buildMode) {
@@ -832,10 +1227,20 @@ window.addEventListener("keydown", (e)=>{
     if (e.key === '4') ui.selectBuilding('turret', 200);
     if (e.key === '5') ui.selectBuilding('missileTurret', 400);
   }
+
+  // Power-up hotkeys (only work in power-up mode)
+  if (powerUpMode) {
+    if (e.key === '1') ui.buyPowerUp('shield', 500);
+    if (e.key === '2') ui.buyPowerUp('instaKill', 750);
+    if (e.key === '3') ui.buyPowerUp('surge', 400);
+  }
   
   if (e.key === 'Escape') {
     if (buildMode) {
       ui.toggleBuildMode();
+    }
+    if (powerUpMode) {
+      ui.togglePowerUpMode();
     }
   }
 });
@@ -1044,8 +1449,9 @@ function Zombie(x, z, speed, health = 100, damage = 0.5) {
   this.speed = speed;
 
   this.targetBuilding = null;
+
   this.damage = damage;
-  this.health = health;
+  this.health = powerUpState.instaKillActive ? 1 : 100; 
   
   // Use getSync since zombie model is preloaded
   this.mesh = modelLoader.getSync('zombie');
@@ -1106,7 +1512,9 @@ function Zombie(x, z, speed, health = 100, damage = 0.5) {
           this.vX = 0;
           this.vZ = 0;
           
-          this.targetBuilding.health -= this.damage;
+          if (!powerUpState.shieldActive) {
+            this.targetBuilding.health -= this.damage;
+          }
         }
       }
     } else{
@@ -1114,10 +1522,10 @@ function Zombie(x, z, speed, health = 100, damage = 0.5) {
         this.vX = 0;
         this.vZ = 0;
 
-        if(playerHealth > 0) {
+        if(playerHealth > 0 && !powerUpState.shieldActive) {
           playerHealth -= this.damage;
+        } else if (!powerUpState.shieldActive) { 
           triggerDamageFlash();
-        } else { 
           playerHealth = 0;
         }
       }
@@ -1314,7 +1722,7 @@ function Building(type, x, z, options = {}) {
   }
 
   this.update = function update() {
-    energy += this.energyRate;
+    energy += this.energyRate * (powerUpState.surgeActive ? 2 : 1);
 
     // ============================================
     // Turret Attack Logic
@@ -1457,6 +1865,11 @@ function Building(type, x, z, options = {}) {
     if (this.mesh) {
       scene.remove(this.mesh);
     }
+    // Remove shield glow if present
+    if (this.shieldGlow) {
+      scene.remove(this.shieldGlow);
+      this.shieldGlow = null;
+    }
     // Remove health bar from scene
     if (this.healthBarGroup) {
       scene.remove(this.healthBarGroup);
@@ -1516,6 +1929,235 @@ window.gridConfig = gridConfig;
 window.grid = grid;
 
 // ============================================
+// Power-Up Shop (3D Object)
+// ============================================
+
+let shopCharacter = null;
+let shopSign = null;
+let shieldMesh = null;
+
+// ===== SHIELD VISUAL — adjust position here =====
+const shieldPosition = { x: 16, y: 0, z: 0 }; // tweak these to move the shield
+const shieldRadius = 1.5; // radius of the dome
+
+/**
+ * Make a canvas texture with text on it (for readable 3D signs)
+ */
+function makeTextTexture(text, fontSize, fgColor, bgColor, w, h) {
+  const canvas = document.createElement('canvas');
+  canvas.width = w || 512;
+  canvas.height = h || 128;
+  const ctx = canvas.getContext('2d');
+
+  // Background
+  if (bgColor) {
+    ctx.fillStyle = bgColor;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+
+  ctx.fillStyle = fgColor || '#ffffff';
+  ctx.font = `bold ${fontSize || 64}px "Arial Black", Impact, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.minFilter = THREE.LinearFilter;
+  return tex;
+}
+
+function createPowerUpShop() {
+  const shopGroup = new THREE.Group();
+
+  // --- Booth frame: dark weathered wood ---
+  const darkWood = new THREE.MeshStandardMaterial({ color: 0x3b2a1a, roughness: 0.95 });
+  const plankMat = new THREE.MeshStandardMaterial({ color: 0x5c3d1e, roughness: 0.9 });
+
+  // Back planks
+  for (let i = 0; i < 4; i++) {
+    const plank = new THREE.Mesh(new THREE.BoxGeometry(0.85, 2.8, 0.12), plankMat);
+    plank.position.set(-1.3 + i * 0.87, 1.4, -0.85);
+    plank.castShadow = true;
+    shopGroup.add(plank);
+  }
+
+  // Counter slab 
+  const counter = new THREE.Mesh(
+    new THREE.BoxGeometry(3.6, 0.18, 1.4),
+    new THREE.MeshStandardMaterial({ color: 0x7a5230, roughness: 0.7 })
+  );
+  counter.position.set(0, 1.05, 0);
+  counter.castShadow = true;
+  shopGroup.add(counter);
+
+  // Counter edge trim
+  const edgeTrim = new THREE.Mesh(
+    new THREE.BoxGeometry(3.7, 0.08, 0.12),
+    new THREE.MeshStandardMaterial({ color: 0x2e8b57, roughness: 0.5, metalness: 0.2 })
+  );
+  edgeTrim.position.set(0, 1.16, 0.65);
+  shopGroup.add(edgeTrim);
+
+  // Corner posts (chunky)
+  const postGeo = new THREE.BoxGeometry(0.22, 3.2, 0.22);
+  const postMat = new THREE.MeshStandardMaterial({ color: 0x2a1a0e, roughness: 0.9 });
+  [[-1.75, 0], [1.75, 0]].forEach(([px, pz]) => {
+    const post = new THREE.Mesh(postGeo, postMat);
+    post.position.set(px, 1.6, pz);
+    post.castShadow = true;
+    shopGroup.add(post);
+  });
+
+  // Awning (striped look via two overlapping boxes)
+  const awning1 = new THREE.Mesh(
+    new THREE.BoxGeometry(4.0, 0.1, 2.2),
+    new THREE.MeshStandardMaterial({ color: 0x228833, roughness: 0.6 })
+  );
+  awning1.position.set(0, 3.2, 0.2);
+  awning1.rotation.x = -0.15;
+  awning1.castShadow = true;
+  shopGroup.add(awning1);
+
+  // Awning stripe
+  const awning2 = new THREE.Mesh(
+    new THREE.BoxGeometry(3.8, 0.06, 0.4),
+    new THREE.MeshStandardMaterial({ color: 0x44cc66, roughness: 0.5 })
+  );
+  awning2.position.set(0, 3.22, 0.9);
+  shopGroup.add(awning2);
+
+  // Front overhang drape
+  const drape = new THREE.Mesh(
+    new THREE.BoxGeometry(4.0, 0.25, 0.06),
+    new THREE.MeshStandardMaterial({ color: 0x44cc66, roughness: 0.5 })
+  );
+  drape.position.set(0, 3.08, 1.25);
+  shopGroup.add(drape);
+
+  // --- Shopkeeper character ---
+  const guy = new THREE.Group();
+
+  // Body (round-ish cylinder)
+  const bodyGeo = new THREE.CylinderGeometry(0.28, 0.32, 0.75, 8);
+  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x22aa55, roughness: 0.7 });
+  const body = new THREE.Mesh(bodyGeo, bodyMat);
+  body.position.y = 0.38;
+  body.castShadow = true;
+  guy.add(body);
+
+  // Head (sphere, not box)
+  const head = new THREE.Mesh(
+    new THREE.SphereGeometry(0.28, 12, 10),
+    new THREE.MeshStandardMaterial({ color: 0xf5c99a, roughness: 0.8 })
+  );
+  head.position.y = 1.0;
+  head.castShadow = true;
+  guy.add(head);
+
+  // Eyes – white sclera + dark pupil
+  [[-0.1, 0], [0.1, 0]].forEach(([ex]) => {
+    const sclera = new THREE.Mesh(
+      new THREE.SphereGeometry(0.06, 8, 8),
+      new THREE.MeshBasicMaterial({ color: 0xffffff })
+    );
+    sclera.position.set(ex, 1.04, 0.24);
+    guy.add(sclera);
+    const pupil = new THREE.Mesh(
+      new THREE.SphereGeometry(0.035, 6, 6),
+      new THREE.MeshBasicMaterial({ color: 0x111111 })
+    );
+    pupil.position.set(ex, 1.04, 0.29);
+    guy.add(pupil);
+  });
+
+  // Mouth
+  const mouth = new THREE.Mesh(
+    new THREE.TorusGeometry(0.07, 0.018, 6, 10, Math.PI),
+    new THREE.MeshBasicMaterial({ color: 0x333333 })
+  );
+  mouth.position.set(0, 0.91, 0.26);
+  mouth.rotation.x = Math.PI;
+  guy.add(mouth);
+
+  // Cap (flat beret)
+  const cap = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.32, 0.28, 0.12, 10),
+    new THREE.MeshStandardMaterial({ color: 0x884422, roughness: 0.7 })
+  );
+  cap.position.y = 1.28;
+  cap.castShadow = true;
+  guy.add(cap);
+
+  // Arms
+  const armMat = new THREE.MeshStandardMaterial({ color: 0x22aa55 });
+  const lArm = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.45, 0.12), armMat);
+  lArm.position.set(-0.38, 0.5, 0);
+  lArm.rotation.z = 0.25;
+  guy.add(lArm);
+  const rArm = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.45, 0.12), armMat);
+  rArm.position.set(0.38, 0.58, 0);
+  rArm.rotation.z = -0.5;
+  guy.add(rArm);
+
+  guy.position.set(0, 0.5, -0.35);
+  shopCharacter = guy;
+  shopGroup.add(guy);
+
+  // --- Sign with actual readable text via canvas texture ---
+  const signTex = makeTextTexture('POWER UPS', 72, '#ffffff', '#228833', 512, 128);
+  const signMat = new THREE.MeshBasicMaterial({ map: signTex });
+  const signMesh = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 0.85), signMat);
+  signMesh.position.set(0, 3.65, 0.3);
+  shopSign = signMesh;
+  shopGroup.add(signMesh);
+
+  // Lantern on each post
+  const lanternMat = new THREE.MeshStandardMaterial({ color: 0xffcc44, emissive: 0xffaa00, emissiveIntensity: 0.6 });
+  [[-1.75, 0], [1.75, 0]].forEach(([lx, lz]) => {
+    const lantern = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), lanternMat);
+    lantern.position.set(lx, 2.9, lz + 0.15);
+    shopGroup.add(lantern);
+    const lLight = new THREE.PointLight(0xffaa44, 0.6, 5);
+    lLight.position.set(lx, 2.9, lz + 0.15);
+    shopGroup.add(lLight);
+  });
+
+  // Some crates / boxes on the counter for clutter
+  const crateMat = new THREE.MeshStandardMaterial({ color: 0x8b6914, roughness: 0.85 });
+  const crate1 = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.35, 0.35), crateMat);
+  crate1.position.set(-1.1, 1.32, 0.15);
+  crate1.rotation.y = 0.4;
+  shopGroup.add(crate1);
+  const crate2 = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.25, 0.25), crateMat);
+  crate2.position.set(-0.75, 1.27, 0.3);
+  crate2.rotation.y = -0.3;
+  shopGroup.add(crate2);
+
+  // Potion bottles (cylinders with sphere tops)
+  const potionColors = [0xff4466, 0x44bbff, 0xaaff44];
+  potionColors.forEach((col, i) => {
+    const bottle = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.06, 0.08, 0.25, 8),
+      new THREE.MeshStandardMaterial({ color: col, transparent: true, opacity: 0.8, roughness: 0.2, metalness: 0.1 })
+    );
+    bottle.position.set(0.7 + i * 0.22, 1.27, 0.2);
+    shopGroup.add(bottle);
+    const cork = new THREE.Mesh(
+      new THREE.SphereGeometry(0.05, 6, 6),
+      new THREE.MeshStandardMaterial({ color: 0xaa8855 })
+    );
+    cork.position.set(0.7 + i * 0.22, 1.42, 0.2);
+    shopGroup.add(cork);
+  });
+
+  // Position: above the grid on the Z-negative side (top when viewed from default camera)
+  shopGroup.position.set(0, 0, -(gridConfig.totalHeight / 2 + 1.5));
+  shopGroup.rotation.y = 0; // Face towards camera
+
+  scene.add(shopGroup);
+}
+
+// ============================================
 // Game Initialization
 // ============================================
 
@@ -1527,6 +2169,19 @@ async function initGame() {
   
   // Preload all models for instant spawning during gameplay
   await modelLoader.preload(['zombie', 'solarPanel', 'windTurbine', 'powerPlant', 'turret', 'missileTurret', 'map']);
+
+  // ============================================
+  // Power-Up Shop (cute 3D booth)
+  // ============================================
+  createPowerUpShop();
+
+  // Shield Dome Visual
+  const shieldGeo = new THREE.SphereGeometry(shieldRadius, 24, 16, 0, Math.PI * 2, 0, Math.PI / 2);
+  const shieldMat = new THREE.MeshBasicMaterial({ color: 0x44aaff, transparent: true, opacity: 0.3, side: THREE.DoubleSide });
+  shieldMesh = new THREE.Mesh(shieldGeo, shieldMat);
+  shieldMesh.position.set(shieldPosition.x, shieldPosition.y, shieldPosition.z);
+  shieldMesh.visible = false;
+  scene.add(shieldMesh);
   
   // Load and add the map to the scene
   const mapModel = modelLoader.getSync('map');
