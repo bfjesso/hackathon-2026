@@ -11,8 +11,12 @@ function getRandomInRange(min, max) {
 // ============================================
 
 let energy = 500;
-let health = 100;
+let playerHealth = 100;
 let buildMode = false;
+let gameOver = false;
+let gameLoopInterval = null;
+
+const hydroElectricRate = 0.25;
 
 // ============================================
 // Grid Configuration
@@ -86,6 +90,121 @@ const sky = new THREE.Mesh(skyGeometry, skyMaterial);
 scene.add(sky);
 
 // ============================================
+// Tracer System
+// ============================================
+
+const tracers = [];
+
+/**
+ * Create a tracer effect from turret to target
+ * @param {number} startX - Start X position
+ * @param {number} startZ - Start Z position  
+ * @param {number} endX - End X position
+ * @param {number} endZ - End Z position
+ * @param {string} type - 'bullet' or 'missile'
+ */
+function createTracer(startX, startZ, endX, endZ, type = 'bullet') {
+  const startY = 2; // Height of turret barrel
+  const endY = 1;   // Height of zombie center
+  
+  if (type === 'bullet') {
+    // Fast bullet tracer - thin yellow line
+    const points = [
+      new THREE.Vector3(startX, startY, startZ),
+      new THREE.Vector3(endX, endY, endZ)
+    ];
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    const material = new THREE.LineBasicMaterial({ 
+      color: 0xffff00, 
+      transparent: true, 
+      opacity: 1.0 
+    });
+    const line = new THREE.Line(geometry, material);
+    scene.add(line);
+    
+    tracers.push({
+      mesh: line,
+      lifetime: 100,  // ms
+      createdAt: Date.now(),
+      type: 'line'
+    });
+  } else if (type === 'missile') {
+    // Missile tracer - thicker orange/red with trail
+    const points = [
+      new THREE.Vector3(startX, startY, startZ),
+      new THREE.Vector3(endX, endY, endZ)
+    ];
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    const material = new THREE.LineBasicMaterial({ 
+      color: 0xff4400, 
+      transparent: true, 
+      opacity: 1.0,
+      linewidth: 3
+    });
+    const line = new THREE.Line(geometry, material);
+    scene.add(line);
+    
+    // Add explosion effect at impact point
+    const explosionGeometry = new THREE.SphereGeometry(0.5, 8, 8);
+    const explosionMaterial = new THREE.MeshBasicMaterial({ 
+      color: 0xff6600, 
+      transparent: true, 
+      opacity: 0.8 
+    });
+    const explosion = new THREE.Mesh(explosionGeometry, explosionMaterial);
+    explosion.position.set(endX, endY, endZ);
+    scene.add(explosion);
+    
+    tracers.push({
+      mesh: line,
+      lifetime: 150,
+      createdAt: Date.now(),
+      type: 'line'
+    });
+    
+    tracers.push({
+      mesh: explosion,
+      lifetime: 300,
+      createdAt: Date.now(),
+      type: 'explosion',
+      maxScale: 3
+    });
+  }
+}
+
+/**
+ * Update all active tracers (call in game loop)
+ */
+function updateTracers() {
+  const now = Date.now();
+  
+  for (let i = tracers.length - 1; i >= 0; i--) {
+    const tracer = tracers[i];
+    const age = now - tracer.createdAt;
+    const progress = age / tracer.lifetime;
+    
+    if (progress >= 1) {
+      // Remove expired tracer
+      scene.remove(tracer.mesh);
+      if (tracer.mesh.geometry) tracer.mesh.geometry.dispose();
+      if (tracer.mesh.material) tracer.mesh.material.dispose();
+      tracers.splice(i, 1);
+    } else {
+      // Fade out tracer
+      if (tracer.mesh.material) {
+        tracer.mesh.material.opacity = 1 - progress;
+      }
+      
+      // Expand explosion effect
+      if (tracer.type === 'explosion') {
+        const scale = 1 + progress * (tracer.maxScale - 1);
+        tracer.mesh.scale.setScalar(scale);
+      }
+    }
+  }
+}
+
+// ============================================
 // Model Loader System
 // ============================================
 
@@ -99,6 +218,8 @@ const modelLoader = {
     solarPanel: '/models/painel_solar/scene.gltf',
     windTurbine: '/models/low_poly_wind_turbine/scene.gltf',
     powerPlant: '/models/cooling-_tower/scene.gltf',
+    turret: '/models/turret-low-poly/scene.gltf',
+    missileTurret: '/models/missile_turret_-_wip/scene.gltf',
     map: '/models/the_map/Hackathon1.gltf',
   },
 
@@ -273,6 +394,8 @@ const ui = {
       { key: 'solarPanel', name: 'Solar Panel', cost: 100, hotkey: '1' },
       { key: 'windTurbine', name: 'Wind Turbine', cost: 150, hotkey: '2' },
       { key: 'powerPlant', name: 'Power Plant', cost: 300, hotkey: '3' },
+      { key: 'turret', name: 'Turret', cost: 200, hotkey: '4' },
+      { key: 'missileTurret', name: 'Missile Turret', cost: 400, hotkey: '5' },
     ];
 
     buildingTypes.forEach(building => {
@@ -300,24 +423,6 @@ const ui = {
       btn.addEventListener('click', () => this.selectBuilding(building.key, building.cost));
       this.buildMenu.appendChild(btn);
     });
-
-    // Cancel button
-    const cancelBtn = document.createElement('button');
-    cancelBtn.textContent = '[ESC] Cancel';
-    cancelBtn.style.cssText = `
-      display: block;
-      width: 100%;
-      padding: 8px 15px;
-      margin-top: 10px;
-      background: #8b0000;
-      border: 2px solid #a00;
-      color: white;
-      border-radius: 5px;
-      cursor: pointer;
-      font-size: 12px;
-    `;
-    cancelBtn.addEventListener('click', () => this.cancelSelection());
-    this.buildMenu.appendChild(cancelBtn);
 
     this.container.appendChild(this.buildMenu);
     this.update();
@@ -367,7 +472,7 @@ const ui = {
   },
 
   update() {
-    this.healthDisplay.textContent = `❤️ Health: ${health}`;
+    this.healthDisplay.textContent = `❤️ Health: ${playerHealth}`;
     this.energyDisplay.textContent = `⚡ Energy: ${Math.round(energy)} Joules`;
   }
 };
@@ -441,16 +546,28 @@ function spawnZombie() {
     return;
   }
   
-  const zombie = new Zombie(-15, getRandomInRange(-15, 15), 0.1); // Spawn at edge, random Z
+  const zombie = new Zombie(-15, getRandomInRange(-15, 15), 0.5); // Spawn at edge, random Z
   zombie.findTarget();
 
   zombies.push(zombie);
 }
 
-const renderRate = 20;
+const renderRate = 100;
 
 let currentTime = 0; // in miliseconds
 function gameLoop() {
+  if (gameOver) return;
+
+  // Check for game over
+  if (playerHealth <= 0) {
+    playerHealth = 0;
+    gameOver = true;
+    ui.update();
+    showGameOverScreen();
+    renderer.render(scene, camera);
+    return;
+  }
+
   if(currentTime % 1000 == 0){
     spawnZombie();
   }
@@ -463,6 +580,11 @@ function gameLoop() {
     buildings[i].update();
   }
 
+  // Update tracer effects
+  updateTracers();
+
+  energy += hydroElectricRate;
+
   currentTime += renderRate;
   
   // Update hover indicator every frame
@@ -470,6 +592,67 @@ function gameLoop() {
   
   ui.update();
   renderer.render( scene, camera );
+}
+
+function showGameOverScreen() {
+  const overlay = document.createElement('div');
+  overlay.id = 'game-over-screen';
+  overlay.style.cssText = `
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+    font-family: 'Segoe UI', Arial, sans-serif;
+  `;
+
+  const title = document.createElement('div');
+  title.textContent = 'THE CITY HAS FALLEN';
+  title.style.cssText = `
+    font-size: 72px;
+    font-weight: bold;
+    color: #ff4444;
+    text-shadow: 0 0 20px rgba(255, 68, 68, 0.6);
+    margin-bottom: 20px;
+  `;
+
+  const stats = document.createElement('div');
+  stats.textContent = `Final Energy: ${Math.round(energy)} Joules`;
+  stats.style.cssText = `
+    font-size: 24px;
+    color: #4ecdc4;
+    margin-bottom: 40px;
+  `;
+
+  const restartBtn = document.createElement('button');
+  restartBtn.textContent = 'Restart';
+  restartBtn.style.cssText = `
+    padding: 15px 50px;
+    font-size: 24px;
+    background: #333;
+    border: 2px solid #ff4444;
+    color: white;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+  `;
+  restartBtn.addEventListener('mouseenter', () => {
+    restartBtn.style.background = '#ff4444';
+  });
+  restartBtn.addEventListener('mouseleave', () => {
+    restartBtn.style.background = '#333';
+  });
+  restartBtn.addEventListener('click', () => {
+    location.reload();
+  });
+
+  overlay.appendChild(title);
+  overlay.appendChild(stats);
+  overlay.appendChild(restartBtn);
+  document.body.appendChild(overlay);
 }
 
 window.addEventListener("resize", ()=>{
@@ -490,6 +673,8 @@ window.addEventListener("keydown", (e)=>{
     if (e.key === '1') ui.selectBuilding('solarPanel', 100);
     if (e.key === '2') ui.selectBuilding('windTurbine', 150);
     if (e.key === '3') ui.selectBuilding('powerPlant', 300);
+    if (e.key === '4') ui.selectBuilding('turret', 200);
+    if (e.key === '5') ui.selectBuilding('missileTurret', 400);
   }
   
   if (e.key === 'Escape') {
@@ -703,26 +888,14 @@ function Zombie(x, z, speed) {
   this.speed = speed;
 
   this.targetBuilding = null;
-  this.damage = 0.1;
+  this.damage = 0.5;
+  this.health = 100; // Zombie health
   
   // Use getSync since zombie model is preloaded
   this.mesh = modelLoader.getSync('zombie');
   if (this.mesh) {
     this.mesh.position.set(x, 0, z);
-    this.mesh.scale.setScalar(0.1); // Zombie model is ~8 units, scale to ~0.8
-    
-    // Enable shadows for zombie
-    this.mesh.traverse((child) => {
-      if (child.isMesh) {
-        child.castShadow = true;
-        child.receiveShadow = true;
-        // Enhance materials for better look
-        if (child.material) {
-          child.material.needsUpdate = true;
-        }
-      }
-    });
-    
+    this.mesh.scale.setScalar(0.2); // Zombie model is ~8 units, scale to ~0.8
     scene.add(this.mesh);
   }
 
@@ -731,8 +904,8 @@ function Zombie(x, z, speed) {
     let targetZ = 0;
     
     if(buildings.length == 0){
-      targetX = -15;
-      targetZ = 15;
+      targetX = 15;
+      targetZ = 0;
     } else {
       const randBuilding = buildings[getRandomInRange(0, buildings.length - 1)];
       if(randBuilding){
@@ -752,6 +925,12 @@ function Zombie(x, z, speed) {
 
   this.update = function update() {
     if (!this.mesh) return;
+    
+    // Check if zombie is dead
+    if (this.health <= 0) {
+      this.destroy();
+      return;
+    }
     
     this.x += this.vX * this.speed;
     this.z += this.vZ * this.speed;
@@ -777,6 +956,12 @@ function Zombie(x, z, speed) {
       if(this.x > 15 || this.x < -15 || this.z > 15 || this.z < -15){
         this.vX = 0;
         this.vZ = 0;
+
+        if(playerHealth > 0) {
+          playerHealth -= this.damage;
+        } else { 
+          playerHealth = 0;
+        }
       }
 
       this.findTarget();
@@ -787,6 +972,9 @@ function Zombie(x, z, speed) {
     if (this.mesh) {
       scene.remove(this.mesh);
     }
+    // Remove from zombies array
+    const index = zombies.indexOf(this);
+    if (index > -1) zombies.splice(index, 1);
   }
 }
 
@@ -815,8 +1003,10 @@ function Building(type, x, z, options = {}) {
 
   const defaultScales = {
     solarPanel: 0.10,
-    windTurbine: 1.5,     
-    powerPlant: .1,    
+    windTurbine: 2,     
+    powerPlant: 0.3,
+    turret: .3,
+    missileTurret: 0.5,
   };
 
   // Manual position corrections for off-center models (in world units, applied after scaling)
@@ -824,6 +1014,8 @@ function Building(type, x, z, options = {}) {
     solarPanel: { x: 0, y: 0, z: 0 },  
     windTurbine: { x: 0, y: 0, z: 0 },
     powerPlant: { x: 0, y: 0, z: 0 },
+    turret: { x: 0, y: 0, z: 0 },
+    missileTurret: { x: 0, y: 0, z: 0 },
   };
 
   // Default rotations for models (in radians)
@@ -831,15 +1023,48 @@ function Building(type, x, z, options = {}) {
     solarPanel: Math.PI / 4,  // 45 degrees CCW
     windTurbine: 0,
     powerPlant: 0,
+    turret: 0,
+    missileTurret: 0,
   };
 
   const defaultEnergyRates = {
-    solarPanel: 2/100, 
-    windTurbine: 1/100,
-    powerPlant: 3/100,
+    solarPanel: 0.5, 
+    windTurbine: 0.25,
+    powerPlant: 1,
+    turret: 0,
+    missileTurret: 0,
   }
 
   this.energyRate = defaultEnergyRates[type];
+
+  // ============================================
+  // Turret Attack Configuration
+  // ============================================
+  
+  const turretConfig = {
+    turret: {
+      damage: 20,
+      fireRate: 200,      // ms between shots
+      range: 15,
+      splashRadius: 0,    // no splash
+      rotationSpeed: 0.15 // radians per frame for smooth rotation
+    },
+    missileTurret: {
+      damage: 50,
+      fireRate: 1000,     // ms between shots (slower)
+      range: 20,
+      splashRadius: 10,    // splash damage radius
+      rotationSpeed: 0.08 // slower rotation for missile turret
+    }
+  };
+
+  // Turret state
+  this.isTurret = (type === 'turret' || type === 'missileTurret');
+  this.turretStats = turretConfig[type] || null;
+  this.targetZombie = null;
+  this.lastFireTime = 0;
+  this.currentRotation = 0;
+  this.targetRotation = 0;
 
   // Use getSync since models are preloaded
   const model = modelLoader.getSync(type);
@@ -895,10 +1120,10 @@ function Building(type, x, z, options = {}) {
     
     scene.add(this.mesh);
 
-    // --- Health Bar ---
+    // --- Health Bar (added to scene, not building, so it doesn't rotate) ---
     const barWidth = 2;
     const barHeight = 0.25;
-    const barY = box.max.y - minY + 1.2; // float above the model top
+    this.healthBarY = box.max.y - minY + 1.2; // float above the model top
 
     // Background (dark red)
     const bgGeo = new THREE.PlaneGeometry(barWidth, barHeight);
@@ -914,15 +1139,65 @@ function Building(type, x, z, options = {}) {
 
     // Group them so we can position / billboard together
     this.healthBarGroup = new THREE.Group();
-    this.healthBarGroup.position.set(0, barY, 0);
+    this.healthBarGroup.position.set(x, this.healthBarY, z); // Position at building location
     this.healthBarGroup.add(this.healthBarBg);
     this.healthBarGroup.add(this.healthBarFg);
     this.healthBarGroup.visible = false; // hidden at full health
-    this.mesh.add(this.healthBarGroup);
+    scene.add(this.healthBarGroup); // Add to scene, not building mesh
   }
 
   this.update = function update() {
     energy += this.energyRate;
+
+    // ============================================
+    // Turret Attack Logic
+    // ============================================
+    if (this.isTurret && this.turretStats) {
+      // Find target if we don't have one or current target is dead
+      if (!this.targetZombie || this.targetZombie.health <= 0) {
+        this.targetZombie = this.findClosestZombie();
+      }
+      
+      // Check if current target is still in range
+      if (this.targetZombie) {
+        const dist = this.getDistanceToZombie(this.targetZombie);
+        if (dist > this.turretStats.range || this.targetZombie.health <= 0) {
+          this.targetZombie = this.findClosestZombie();
+        }
+      }
+      
+      // Rotate towards target
+      if (this.targetZombie && this.mesh) {
+        // Calculate angle to target
+        const dx = this.targetZombie.x - this.x;
+        const dz = this.targetZombie.z - this.z;
+        this.targetRotation = Math.atan2(dx, dz);
+        
+        // Smoothly interpolate rotation
+        let rotationDiff = this.targetRotation - this.currentRotation;
+        
+        // Normalize angle difference to [-PI, PI]
+        while (rotationDiff > Math.PI) rotationDiff -= Math.PI * 2;
+        while (rotationDiff < -Math.PI) rotationDiff += Math.PI * 2;
+        
+        // Interpolate
+        if (Math.abs(rotationDiff) > 0.01) {
+          this.currentRotation += rotationDiff * this.turretStats.rotationSpeed;
+        } else {
+          this.currentRotation = this.targetRotation;
+        }
+        
+        // Apply rotation to mesh
+        this.mesh.rotation.y = this.currentRotation;
+        
+        // Fire at target (regardless of rotation - turret never misses)
+        const now = Date.now();
+        if (now - this.lastFireTime >= this.turretStats.fireRate) {
+          this.fireAtTarget();
+          this.lastFireTime = now;
+        }
+      }
+    }
 
     // Update health bar visibility and scale
     if (this.healthBarGroup) {
@@ -951,9 +1226,73 @@ function Building(type, x, z, options = {}) {
     }
   }
 
+  // Find closest zombie within range
+  this.findClosestZombie = function() {
+    let closest = null;
+    let closestDist = Infinity;
+    
+    for (const zombie of zombies) {
+      if (zombie.health <= 0) continue;
+      
+      const dist = this.getDistanceToZombie(zombie);
+      if (dist <= this.turretStats.range && dist < closestDist) {
+        closestDist = dist;
+        closest = zombie;
+      }
+    }
+    
+    return closest;
+  }
+
+  // Get distance to a zombie
+  this.getDistanceToZombie = function(zombie) {
+    const dx = zombie.x - this.x;
+    const dz = zombie.z - this.z;
+    return Math.sqrt(dx * dx + dz * dz);
+  }
+
+  // Fire at the current target
+  this.fireAtTarget = function() {
+    if (!this.targetZombie) return;
+    
+    // Create tracer effect
+    const tracerType = this.type === 'missileTurret' ? 'missile' : 'bullet';
+    createTracer(this.x, this.z, this.targetZombie.x, this.targetZombie.z, tracerType);
+    
+    // Apply damage to target
+    this.targetZombie.health -= this.turretStats.damage;
+    
+    // Splash damage for missile turret
+    if (this.turretStats.splashRadius > 0) {
+      for (const zombie of zombies) {
+        if (zombie === this.targetZombie) continue;
+        if (zombie.health <= 0) continue;
+        
+        // Distance from target zombie to other zombies
+        const dx = zombie.x - this.targetZombie.x;
+        const dz = zombie.z - this.targetZombie.z;
+        const dist = Math.sqrt(dx * dx + dz * dz);
+        
+        if (dist <= this.turretStats.splashRadius) {
+          // Full splash damage to all zombies in radius
+          zombie.health -= this.turretStats.damage;
+        }
+      }
+    }
+    
+    // Check if zombie died
+    if (this.targetZombie.health <= 0) {
+      this.targetZombie = null;
+    }
+  }
+
   this.destroy = function destroy() {
     if (this.mesh) {
       scene.remove(this.mesh);
+    }
+    // Remove health bar from scene
+    if (this.healthBarGroup) {
+      scene.remove(this.healthBarGroup);
     }
     // Remove from grid
     if (this.gridX !== null && this.gridZ !== null) {
@@ -1014,7 +1353,7 @@ async function initGame() {
   ui.init();
   
   // Preload all models for instant spawning during gameplay
-  await modelLoader.preload(['zombie', 'solarPanel', 'windTurbine', 'powerPlant', 'map']);
+  await modelLoader.preload(['zombie', 'solarPanel', 'windTurbine', 'powerPlant', 'turret', 'missileTurret', 'map']);
   
   // Load and add the map to the scene
   const mapModel = modelLoader.getSync('map');
@@ -1041,7 +1380,7 @@ async function initGame() {
   console.log('Game assets loaded! Starting game...');
   
   // Start the game loop
-  window.setInterval(gameLoop, renderRate);
+  gameLoopInterval = window.setInterval(gameLoop, renderRate);
 }
 
 // Initialize the game
