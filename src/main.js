@@ -532,6 +532,15 @@ const ui = {
     // Show/hide build menu
     this.buildMenu.style.display = buildMode ? 'block' : 'none';
     
+    // Update camera position
+    if (buildMode) {
+      camera.position.set(buildModeCameraPos.x, buildModeCameraPos.y-15, buildModeCameraPos.z);
+      camera.lookAt(0, 0, 0);
+    } else {
+      camera.position.set(defaultCameraPos.x, defaultCameraPos.y, defaultCameraPos.z);
+      camera.lookAt(0, 0, 0);
+    }
+    
     // Update indicator
     if (buildMode) {
       this.buildModeIndicator.textContent = '🔨 BUILD MODE [B to exit]';
@@ -629,6 +638,10 @@ scene.add(rimLight);
 
 camera.position.set(0, 15, 20);
 camera.lookAt(0, 0, 0);
+
+// Store camera positions for build mode toggle
+const defaultCameraPos = { x: 0, y: 15, z: 20 };
+const buildModeCameraPos = { x: 0, y: 35, z: 0.1 }; // Directly above, slight z offset to avoid gimbal lock
 
 const cubeGeometry = new THREE.BoxGeometry( 1, 1, 1 );
 const cubeMaterial = new THREE.MeshBasicMaterial( { color: 0x00ff00, wireframe: true } );
