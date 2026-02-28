@@ -19,6 +19,19 @@ let gameLoopInterval = null;
 
 const hydroElectricRate = 0.25;
 
+// Active power-up state
+const powerUpState = {
+  shieldActive: false,
+  shieldTimer: 0,
+  shieldCooldown: 0,
+  instaKillActive: false,
+  instaKillTimer: 0,
+  instaKillCooldown: 0,
+  surgeActive: false,
+  surgeTimer: 0,
+  surgeCooldown: 0,
+};
+
 // ============================================
 // Grid Configuration
 // ============================================
@@ -412,28 +425,6 @@ const ui = {
       { key: 'missileTurret', name: 'Missile Turret', cost: 400, hotkey: '5', desc: 'Splash damage missiles' },
     ];
 
-    // Tooltip for build menu descriptions
-    this.buildTooltip = document.createElement('div');
-    this.buildTooltip.style.cssText = `
-      position: absolute;
-      left: calc(100% + 10px);
-      top: 0;
-      background: linear-gradient(135deg, rgba(15, 25, 15, 0.95), rgba(8, 14, 8, 0.97));
-      border: 1px solid #2e8b57;
-      border-radius: 4px;
-      padding: 10px 14px;
-      color: #ddd;
-      font-size: 12px;
-      min-width: 180px;
-      pointer-events: none;
-      display: none;
-      box-shadow: 0 3px 12px rgba(0,0,0,0.5);
-      font-family: 'Segoe UI', Arial, sans-serif;
-      line-height: 1.5;
-      z-index: 10;
-    `;
-    this.buildMenu.appendChild(this.buildTooltip);
-
     buildingTypes.forEach(building => {
       const btn = document.createElement('button');
       btn.innerHTML = `<span style="opacity:0.5;margin-right:6px;">${building.hotkey}</span> ${building.name} <span style="float:right;color:#5dde8e;">${building.cost}</span>`;
@@ -458,18 +449,11 @@ const ui = {
         btn.style.background = 'rgba(46, 139, 87, 0.35)';
         btn.style.color = '#fff';
         if (this.selectedBuilding === building.key) btn.style.borderColor = '#ffd700';
-        // Show tooltip
-        this.buildTooltip.innerHTML = `<div style="color:#5dde8e;font-weight:bold;margin-bottom:4px;">${building.name}</div><div style="margin-bottom:6px;">${building.desc}</div><div style="color:#5dde8e;">Cost: ${building.cost} Joules</div>`;
-        this.buildTooltip.style.display = 'block';
-        const menuRect = this.buildMenu.getBoundingClientRect();
-        const btnRect = btn.getBoundingClientRect();
-        this.buildTooltip.style.top = (btnRect.top - menuRect.top) + 'px';
       });
       btn.addEventListener('mouseleave', () => {
         btn.style.background = 'rgba(46, 139, 87, 0.15)';
         btn.style.color = '#ccc';
         btn.style.borderColor = this.selectedBuilding === building.key ? '#ffd700' : 'rgba(46, 139, 87, 0.3)';
-        this.buildTooltip.style.display = 'none';
       });
       btn.addEventListener('click', () => this.selectBuilding(building.key, building.cost));
       this.buildMenu.appendChild(btn);
@@ -505,11 +489,9 @@ const ui = {
     this.powerUpMenu.appendChild(powerUpTitle);
 
     const powerUps = [
-      { key: 'repairAll', name: 'Repair All', cost: 200, hotkey: '1', desc: 'Fix all buildings to full' },
-      { key: 'energyBoost', name: 'Energy Surge', cost: 50, hotkey: '2', desc: '+500 energy' },
-      { key: 'turretBoost', name: 'Overcharge Turrets', cost: 300, hotkey: '3', desc: '2x turret damage (30s)' },
-      { key: 'zombieSlow', name: 'Freeze Wave', cost: 250, hotkey: '4', desc: 'Slow zombies (20s)' },
-      { key: 'shield', name: 'City Shield', cost: 400, hotkey: '5', desc: 'Block base damage (25s)' },
+      { key: 'shield', name: 'Shield', cost: 500, hotkey: '1', desc: 'Protects player and buildings for 10 seconds (45s cooldown)' },
+      { key: 'instaKill', name: 'Insta Kill', cost: 750, hotkey: '2', desc: 'Sets all zombies to 1 HP for 10 seconds, including new spawns (60s cooldown)' },
+      { key: 'surge', name: 'Surge', cost: 400, hotkey: '3', desc: 'Doubles energy generation for 10 seconds (30s cooldown)' },
     ];
 
     // Tooltip element for power-up descriptions
@@ -591,8 +573,50 @@ const ui = {
       console.log('Not enough energy for power-up!');
       return;
     }
+    // Check cooldown
+    const cooldownKey = type + 'Cooldown';
+    if (powerUpState[cooldownKey] > 0) {
+      console.log(`${type} is on cooldown! ${Math.ceil(powerUpState[cooldownKey] / 1000)}s remaining.`);
+      return;
+    }
     energy -= cost;
-    console.log(`Bought power-up: ${type}`);
+
+    switch (type) {
+      case 'shield':
+        powerUpState.shieldActive = true;
+        powerUpState.shieldTimer = 10000;
+        powerUpState.shieldCooldown = 45000;
+        if (shieldMesh) shieldMesh.visible = true;
+        // Add glowing blue floor under every building
+        buildings.forEach(b => {
+          if (!b.shieldGlow && b.mesh) {
+            const glow = new THREE.Mesh(
+              new THREE.CircleGeometry(1.8, 32),
+              new THREE.MeshBasicMaterial({ color: 0x44aaff, transparent: true, opacity: 0.45, side: THREE.DoubleSide })
+            );
+            glow.rotation.x = -Math.PI / 2;
+            glow.position.set(b.x, 0.05, b.z);
+            scene.add(glow);
+            b.shieldGlow = glow;
+          }
+        });
+        console.log('Shield activated for 10s!');
+        break;
+      case 'instaKill':
+        powerUpState.instaKillActive = true;
+        powerUpState.instaKillTimer = 10000;
+        powerUpState.instaKillCooldown = 60000;
+        // Set all current zombies to 1 health
+        zombies.forEach(z => { z.health = Math.min(z.health, 1); });
+        console.log('Insta Kill! All zombies set to 1 HP for 10s.');
+        break;
+      case 'surge':
+        powerUpState.surgeActive = true;
+        powerUpState.surgeTimer = 10000;
+        powerUpState.surgeCooldown = 30000;
+        console.log('Surge activated for 10s! Double energy gen.');
+        break;
+    }
     this.update();
   },
 
@@ -778,7 +802,77 @@ function gameLoop() {
     shopSign.position.y = 3.8 + Math.sin(Date.now() * 0.002) * 0.05;
   }
 
-  energy += hydroElectricRate;
+  // Tick power-up timers
+  if (powerUpState.shieldTimer > 0) {
+    powerUpState.shieldTimer -= renderRate;
+    if (powerUpState.shieldTimer <= 0) {
+      powerUpState.shieldActive = false;
+      powerUpState.shieldTimer = 0;
+      if (shieldMesh) shieldMesh.visible = false;
+      // Remove all building shield glows
+      buildings.forEach(b => {
+        if (b.shieldGlow) {
+          scene.remove(b.shieldGlow);
+          b.shieldGlow = null;
+        }
+      });
+    }
+  }
+
+  // Animate shield dome
+  if (shieldMesh && shieldMesh.visible) {
+    shieldMesh.rotation.y += 0.008;
+  }
+  if (powerUpState.instaKillTimer > 0) {
+    powerUpState.instaKillTimer -= renderRate;
+    if (powerUpState.instaKillTimer <= 0) {
+      powerUpState.instaKillActive = false;
+      powerUpState.instaKillTimer = 0;
+    }
+  }
+  if (powerUpState.surgeTimer > 0) {
+    powerUpState.surgeTimer -= renderRate;
+    if (powerUpState.surgeTimer <= 0) {
+      powerUpState.surgeActive = false;
+      powerUpState.surgeTimer = 0;
+    }
+  }
+
+  energy += hydroElectricRate * (powerUpState.surgeActive ? 2 : 1);
+
+  // Tick cooldowns
+  if (powerUpState.shieldCooldown > 0) powerUpState.shieldCooldown -= renderRate;
+  if (powerUpState.instaKillCooldown > 0) powerUpState.instaKillCooldown -= renderRate;
+  if (powerUpState.surgeCooldown > 0) powerUpState.surgeCooldown -= renderRate;
+
+  // Update power-up button cooldown visuals
+  if (ui.powerUpMenu) {
+    ui.powerUpMenu.querySelectorAll('button').forEach(btn => {
+      const key = btn.dataset.powerUpType;
+      if (!key) return;
+      const cdKey = key + 'Cooldown';
+      const cd = powerUpState[cdKey];
+      if (cd > 0) {
+        const secs = Math.ceil(cd / 1000);
+        btn.style.opacity = '0.4';
+        btn.style.cursor = 'not-allowed';
+        // Show cooldown remaining in the button
+        let cdLabel = btn.querySelector('.cd-label');
+        if (!cdLabel) {
+          cdLabel = document.createElement('span');
+          cdLabel.className = 'cd-label';
+          cdLabel.style.cssText = 'color:#ff6666;font-size:11px;float:right;margin-left:8px;';
+          btn.appendChild(cdLabel);
+        }
+        cdLabel.textContent = secs + 's';
+      } else {
+        btn.style.opacity = '1';
+        btn.style.cursor = 'pointer';
+        const cdLabel = btn.querySelector('.cd-label');
+        if (cdLabel) cdLabel.remove();
+      }
+    });
+  }
 
   currentTime += renderRate;
   
@@ -880,11 +974,9 @@ window.addEventListener("keydown", (e)=>{
 
   // Power-up hotkeys (only work in power-up mode)
   if (powerUpMode) {
-    if (e.key === '1') ui.buyPowerUp('repairAll', 200);
-    if (e.key === '2') ui.buyPowerUp('energyBoost', 50);
-    if (e.key === '3') ui.buyPowerUp('turretBoost', 300);
-    if (e.key === '4') ui.buyPowerUp('zombieSlow', 250);
-    if (e.key === '5') ui.buyPowerUp('shield', 400);
+    if (e.key === '1') ui.buyPowerUp('shield', 500);
+    if (e.key === '2') ui.buyPowerUp('instaKill', 750);
+    if (e.key === '3') ui.buyPowerUp('surge', 400);
   }
   
   if (e.key === 'Escape') {
@@ -1102,7 +1194,7 @@ function Zombie(x, z, speed) {
 
   this.targetBuilding = null;
   this.damage = 0.5;
-  this.health = 100; // Zombie health
+  this.health = powerUpState.instaKillActive ? 1 : 100; // Zombie health
   
   // Use getSync since zombie model is preloaded
   this.mesh = modelLoader.getSync('zombie');
@@ -1162,7 +1254,9 @@ function Zombie(x, z, speed) {
           this.vX = 0;
           this.vZ = 0;
           
-          this.targetBuilding.health -= this.damage;
+          if (!powerUpState.shieldActive) {
+            this.targetBuilding.health -= this.damage;
+          }
         }
       }
     } else{
@@ -1170,9 +1264,9 @@ function Zombie(x, z, speed) {
         this.vX = 0;
         this.vZ = 0;
 
-        if(playerHealth > 0) {
+        if(playerHealth > 0 && !powerUpState.shieldActive) {
           playerHealth -= this.damage;
-        } else { 
+        } else if (!powerUpState.shieldActive) { 
           playerHealth = 0;
         }
       }
@@ -1360,7 +1454,7 @@ function Building(type, x, z, options = {}) {
   }
 
   this.update = function update() {
-    energy += this.energyRate;
+    energy += this.energyRate * (powerUpState.surgeActive ? 2 : 1);
 
     // ============================================
     // Turret Attack Logic
@@ -1503,6 +1597,11 @@ function Building(type, x, z, options = {}) {
     if (this.mesh) {
       scene.remove(this.mesh);
     }
+    // Remove shield glow if present
+    if (this.shieldGlow) {
+      scene.remove(this.shieldGlow);
+      this.shieldGlow = null;
+    }
     // Remove health bar from scene
     if (this.healthBarGroup) {
       scene.remove(this.healthBarGroup);
@@ -1561,6 +1660,11 @@ window.grid = grid;
 
 let shopCharacter = null;
 let shopSign = null;
+let shieldMesh = null;
+
+// ===== SHIELD VISUAL — adjust position here =====
+const shieldPosition = { x: 16, y: 0, z: 0 }; // tweak these to move the shield
+const shieldRadius = 1.5; // radius of the dome
 
 /**
  * Make a canvas texture with text on it (for readable 3D signs)
@@ -1796,6 +1900,14 @@ async function initGame() {
   // Power-Up Shop (cute 3D booth)
   // ============================================
   createPowerUpShop();
+
+  // Shield Dome Visual
+  const shieldGeo = new THREE.SphereGeometry(shieldRadius, 24, 16, 0, Math.PI * 2, 0, Math.PI / 2);
+  const shieldMat = new THREE.MeshBasicMaterial({ color: 0x44aaff, transparent: true, opacity: 0.3, side: THREE.DoubleSide });
+  shieldMesh = new THREE.Mesh(shieldGeo, shieldMat);
+  shieldMesh.position.set(shieldPosition.x, shieldPosition.y, shieldPosition.z);
+  shieldMesh.visible = false;
+  scene.add(shieldMesh);
   
   // Load and add the map to the scene
   const mapModel = modelLoader.getSync('map');
