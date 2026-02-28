@@ -14,6 +14,8 @@ let energy = 500;
 let health = 100;
 let buildMode = false;
 
+const hydroElectricRate = 0.25;
+
 // ============================================
 // Grid Configuration
 // ============================================
@@ -412,6 +414,8 @@ function gameLoop() {
     buildings[i].update();
   }
 
+  energy += hydroElectricRate;
+
   currentTime += renderRate;
   
   ui.update();
@@ -650,8 +654,8 @@ function Zombie(x, z, speed) {
     let targetZ = 0;
     
     if(buildings.length == 0){
-      targetX = -15;
-      targetZ = 15;
+      targetX = 15;
+      targetZ = 0;
     } else {
       const randBuilding = buildings[getRandomInRange(0, buildings.length - 1)];
       if(randBuilding){
@@ -753,9 +757,9 @@ function Building(type, x, z, options = {}) {
   };
 
   const defaultEnergyRates = {
-    solarPanel: 2/100, 
-    windTurbine: 1/100,
-    powerPlant: 3/100,
+    solarPanel: 0.5, 
+    windTurbine: 0.25,
+    powerPlant: 1,
   }
 
   this.energyRate = defaultEnergyRates[type];
