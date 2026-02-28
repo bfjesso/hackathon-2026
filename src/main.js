@@ -14,10 +14,36 @@ let energy = 500;
 let playerHealth = 100;
 let buildMode = false;
 let powerUpMode = false;
+let upgradeMode = false;
 let gameOver = false;
 let gameLoopInterval = null;
 
 const hydroElectricRate = 0.25;
+
+// Upgrade state - tracks upgrade levels for each building type
+const upgradeState = {
+  solarPanel: { level: 0, baseCost: 1000, costMultiplier: 1.5, bonus: 0.25 },      // +25% energy per level
+  windTurbine: { level: 0, baseCost: 1200, costMultiplier: 1.5, bonus: 0.15 },     // +15% energy per level
+  powerPlant: { level: 0, baseCost: 2000, costMultiplier: 1.6, bonus: 0.50 },      // +50% energy per level
+  turret: { level: 0, baseCost: 1500, costMultiplier: 1.5, bonus: 10 },            // +10 damage per level
+  missileTurret: { level: 0, baseCost: 2500, costMultiplier: 1.6, bonus: 25 },     // +25 damage per level
+};
+
+// Get current upgrade cost for a building type
+function getUpgradeCost(type) {
+  const upgrade = upgradeState[type];
+  return Math.round(upgrade.baseCost * Math.pow(upgrade.costMultiplier, upgrade.level));
+}
+
+// Get upgrade bonus description
+function getUpgradeBonus(type) {
+  const upgrade = upgradeState[type];
+  if (type === 'turret' || type === 'missileTurret') {
+    return `+${upgrade.bonus} damage`;
+  } else {
+    return `+${Math.round(upgrade.bonus * 100)}% energy`;
+  }
+}
 
 // Active power-up state
 const powerUpState = {
@@ -365,8 +391,10 @@ const ui = {
   timerDisplay: null,
   buildModeIndicator: null,
   powerUpModeIndicator: null,
+  upgradeModeIndicator: null,
   buildMenu: null,
   powerUpMenu: null,
+  upgradeMenu: null,
   activeBuffBar: null,
   selectedBuilding: null,
 
@@ -431,11 +459,16 @@ const ui = {
     this.powerUpModeIndicator.style.cssText = 'font-size: 14px; color: #888; margin-top: 5px;';
     this.powerUpModeIndicator.textContent = '[P] Power Ups';
 
+    this.upgradeModeIndicator = document.createElement('div');
+    this.upgradeModeIndicator.style.cssText = 'font-size: 14px; color: #888; margin-top: 5px;';
+    this.upgradeModeIndicator.textContent = '[U] Upgrades';
+
     statsPanel.appendChild(this.healthDisplay);
     statsPanel.appendChild(this.energyDisplay);
     statsPanel.appendChild(roundSection);
     statsPanel.appendChild(this.buildModeIndicator);
     statsPanel.appendChild(this.powerUpModeIndicator);
+    statsPanel.appendChild(this.upgradeModeIndicator);
     this.container.appendChild(statsPanel);
 
     // Active power-up HUD bar (top center)
@@ -455,13 +488,13 @@ const ui = {
     // Build menu (right side) - hidden by default
     this.buildMenu = document.createElement('div');
     this.buildMenu.style.cssText = `
-      background: linear-gradient(135deg, rgba(20, 30, 20, 0.92), rgba(10, 18, 10, 0.95));
+      background: linear-gradient(135deg, rgba(20, 30, 40, 0.92), rgba(10, 18, 28, 0.95));
       padding: 18px;
       border-radius: 6px;
       color: white;
       pointer-events: auto;
       display: none;
-      border: 1px solid #2e8b57;
+      border: 1px solid #4ecdc4;
       box-shadow: 0 4px 20px rgba(0,0,0,0.6);
       font-family: 'Segoe UI', Arial, sans-serif;
       overflow: visible;
@@ -470,7 +503,7 @@ const ui = {
     
     const menuTitle = document.createElement('div');
     menuTitle.textContent = 'BUILD';
-    menuTitle.style.cssText = 'font-size: 16px; margin-bottom: 12px; text-align: center; color: #5dde8e; font-weight: bold; letter-spacing: 3px; text-transform: uppercase;';
+    menuTitle.style.cssText = 'font-size: 16px; margin-bottom: 12px; text-align: center; color: #4ecdc4; font-weight: bold; letter-spacing: 3px; text-transform: uppercase;';
     this.buildMenu.appendChild(menuTitle);
 
     const buildingTypes = [
@@ -483,7 +516,7 @@ const ui = {
 
     buildingTypes.forEach(building => {
       const btn = document.createElement('button');
-      btn.innerHTML = `<span style="opacity:0.5;margin-right:6px;">${building.hotkey}</span> ${building.name} <span style="float:right;color:#5dde8e;">${building.cost}</span>`;
+      btn.innerHTML = `<span style="opacity:0.5;margin-right:6px;">${building.hotkey}</span> ${building.name} <span style="float:right;color:#4ecdc4;">${building.cost}</span>`;
       btn.dataset.buildingType = building.key;
       btn.dataset.cost = building.cost;
       btn.style.cssText = `
@@ -491,8 +524,8 @@ const ui = {
         width: 100%;
         padding: 8px 12px;
         margin-bottom: 4px;
-        background: rgba(46, 139, 87, 0.15);
-        border: 1px solid rgba(46, 139, 87, 0.3);
+        background: rgba(78, 205, 196, 0.15);
+        border: 1px solid rgba(78, 205, 196, 0.3);
         color: #ccc;
         border-radius: 4px;
         cursor: pointer;
@@ -502,14 +535,14 @@ const ui = {
         transition: background 0.15s;
       `;
       btn.addEventListener('mouseenter', () => {
-        btn.style.background = 'rgba(46, 139, 87, 0.35)';
+        btn.style.background = 'rgba(78, 205, 196, 0.35)';
         btn.style.color = '#fff';
         if (this.selectedBuilding === building.key) btn.style.borderColor = '#ffd700';
       });
       btn.addEventListener('mouseleave', () => {
-        btn.style.background = 'rgba(46, 139, 87, 0.15)';
+        btn.style.background = 'rgba(78, 205, 196, 0.15)';
         btn.style.color = '#ccc';
-        btn.style.borderColor = this.selectedBuilding === building.key ? '#ffd700' : 'rgba(46, 139, 87, 0.3)';
+        btn.style.borderColor = this.selectedBuilding === building.key ? '#ffd700' : 'rgba(78, 205, 196, 0.3)';
       });
       btn.addEventListener('click', () => this.selectBuilding(building.key, building.cost));
       this.buildMenu.appendChild(btn);
@@ -622,7 +655,156 @@ const ui = {
 
     document.body.appendChild(this.powerUpMenu);
 
+    // ============================================
+    // Upgrades Menu
+    // ============================================
+    this.upgradeMenu = document.createElement('div');
+    this.upgradeMenu.style.cssText = `
+      background: linear-gradient(135deg, rgba(30, 20, 10, 0.92), rgba(18, 12, 6, 0.95));
+      padding: 18px;
+      border-radius: 6px;
+      color: white;
+      pointer-events: auto;
+      display: none;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      min-width: 320px;
+      border: 1px solid #b8860b;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+      font-family: 'Segoe UI', Arial, sans-serif;
+      overflow: visible;
+    `;
+    
+    const upgradeTitle = document.createElement('div');
+    upgradeTitle.textContent = 'UPGRADES';
+    upgradeTitle.style.cssText = 'font-size: 16px; margin-bottom: 12px; text-align: center; color: #daa520; font-weight: bold; letter-spacing: 3px; text-transform: uppercase;';
+    this.upgradeMenu.appendChild(upgradeTitle);
+
+    // Tooltip for upgrades
+    this.upgradeTooltip = document.createElement('div');
+    this.upgradeTooltip.style.cssText = `
+      position: absolute;
+      left: calc(100% + 10px);
+      top: 0;
+      background: linear-gradient(135deg, rgba(25, 18, 8, 0.95), rgba(14, 10, 4, 0.97));
+      border: 1px solid #b8860b;
+      border-radius: 4px;
+      padding: 10px 14px;
+      color: #ddd;
+      font-size: 12px;
+      min-width: 180px;
+      pointer-events: none;
+      display: none;
+      box-shadow: 0 3px 12px rgba(0,0,0,0.5);
+      font-family: 'Segoe UI', Arial, sans-serif;
+      line-height: 1.5;
+      z-index: 10;
+    `;
+    this.upgradeMenu.appendChild(this.upgradeTooltip);
+
+    const upgradeTypes = [
+      { key: 'solarPanel', name: 'Solar Panel', hotkey: '1', desc: 'Increases energy generation of all Solar Panels' },
+      { key: 'windTurbine', name: 'Wind Turbine', hotkey: '2', desc: 'Increases energy generation of all Wind Turbines' },
+      { key: 'powerPlant', name: 'Power Plant', hotkey: '3', desc: 'Increases energy generation of all Power Plants' },
+      { key: 'turret', name: 'Turret', hotkey: '4', desc: 'Increases damage of all Turrets' },
+      { key: 'missileTurret', name: 'Missile Turret', hotkey: '5', desc: 'Increases damage of all Missile Turrets' },
+    ];
+
+    this.upgradeButtons = {};
+    upgradeTypes.forEach(upgrade => {
+      const btn = document.createElement('button');
+      btn.dataset.upgradeType = upgrade.key;
+      this.upgradeButtons[upgrade.key] = btn;
+      this.updateUpgradeButton(btn, upgrade);
+      
+      btn.style.cssText = `
+        display: block;
+        width: 100%;
+        padding: 8px 12px;
+        margin-bottom: 4px;
+        background: rgba(184, 134, 11, 0.15);
+        border: 1px solid rgba(184, 134, 11, 0.3);
+        color: #ccc;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 13px;
+        font-family: 'Segoe UI', Arial, sans-serif;
+        text-align: left;
+        transition: background 0.15s;
+        position: relative;
+        overflow: hidden;
+      `;
+      btn.addEventListener('mouseenter', () => {
+        btn.style.background = 'rgba(184, 134, 11, 0.35)';
+        btn.style.color = '#fff';
+        const cost = getUpgradeCost(upgrade.key);
+        const bonus = getUpgradeBonus(upgrade.key);
+        const level = upgradeState[upgrade.key].level;
+        this.upgradeTooltip.innerHTML = `<div style="color:#daa520;font-weight:bold;margin-bottom:4px;">${upgrade.name} (Lv.${level})</div><div style="margin-bottom:6px;">${upgrade.desc}</div><div style="color:#7fff00;">Next: ${bonus}</div><div style="color:#daa520;">Cost: ${cost} Joules</div>`;
+        this.upgradeTooltip.style.display = 'block';
+        const menuRect = this.upgradeMenu.getBoundingClientRect();
+        const btnRect = btn.getBoundingClientRect();
+        this.upgradeTooltip.style.top = (btnRect.top - menuRect.top) + 'px';
+      });
+      btn.addEventListener('mouseleave', () => {
+        btn.style.background = 'rgba(184, 134, 11, 0.15)';
+        btn.style.color = '#ccc';
+        this.upgradeTooltip.style.display = 'none';
+      });
+      btn.addEventListener('click', () => this.buyUpgrade(upgrade.key));
+      this.upgradeMenu.appendChild(btn);
+    });
+
+    const upgradeCloseHint = document.createElement('div');
+    upgradeCloseHint.textContent = '[U] or [Esc] to close';
+    upgradeCloseHint.style.cssText = 'font-size: 10px; text-align: center; opacity: 0.35; margin-top: 10px;';
+    this.upgradeMenu.appendChild(upgradeCloseHint);
+
+    document.body.appendChild(this.upgradeMenu);
+
     this.update();
+  },
+
+  updateUpgradeButton(btn, upgrade) {
+    const cost = getUpgradeCost(upgrade.key);
+    const level = upgradeState[upgrade.key].level;
+    btn.innerHTML = `<span style="opacity:0.5;margin-right:6px;">${upgrade.hotkey}</span> ${upgrade.name} <span style="color:#888;font-size:11px;">Lv.${level}</span> <span style="float:right;color:#daa520;">${cost}</span>`;
+  },
+
+  refreshUpgradeButtons() {
+    const upgradeTypes = [
+      { key: 'solarPanel', name: 'Solar Panel', hotkey: '1' },
+      { key: 'windTurbine', name: 'Wind Turbine', hotkey: '2' },
+      { key: 'powerPlant', name: 'Power Plant', hotkey: '3' },
+      { key: 'turret', name: 'Turret', hotkey: '4' },
+      { key: 'missileTurret', name: 'Missile Turret', hotkey: '5' },
+    ];
+    upgradeTypes.forEach(upgrade => {
+      if (this.upgradeButtons[upgrade.key]) {
+        this.updateUpgradeButton(this.upgradeButtons[upgrade.key], upgrade);
+      }
+    });
+  },
+
+  buyUpgrade(type) {
+    const cost = getUpgradeCost(type);
+    if (energy < cost) {
+      console.log('Not enough energy for upgrade!');
+      return;
+    }
+    
+    energy -= cost;
+    upgradeState[type].level++;
+    
+    // Apply upgrade to all existing buildings of this type
+    applyUpgradeToBuildings(type);
+    
+    // Refresh button display
+    this.refreshUpgradeButtons();
+    
+    console.log(`Upgraded ${type} to level ${upgradeState[type].level}!`);
   },
 
   buyPowerUp(type, cost) {
@@ -697,6 +879,7 @@ const ui = {
 
   toggleBuildMode() {
     if (powerUpMode) this.togglePowerUpMode(); // close power-ups first
+    if (upgradeMode) this.toggleUpgradeMode(); // close upgrades first
     buildMode = !buildMode;
     this.updateBuildMode();
     if (!buildMode) {
@@ -706,8 +889,16 @@ const ui = {
 
   togglePowerUpMode() {
     if (buildMode) this.toggleBuildMode(); // close build mode first
+    if (upgradeMode) this.toggleUpgradeMode(); // close upgrades first
     powerUpMode = !powerUpMode;
     this.updatePowerUpMode();
+  },
+
+  toggleUpgradeMode() {
+    if (buildMode) this.toggleBuildMode(); // close build mode first
+    if (powerUpMode) this.togglePowerUpMode(); // close power-ups first
+    upgradeMode = !upgradeMode;
+    this.updateUpgradeMode();
   },
 
   updateBuildMode() {
@@ -745,6 +936,19 @@ const ui = {
     } else {
       this.powerUpModeIndicator.textContent = '[P] Power Ups';
       this.powerUpModeIndicator.style.color = '#888';
+    }
+  },
+
+  updateUpgradeMode() {
+    this.upgradeMenu.style.display = upgradeMode ? 'block' : 'none';
+    this.refreshUpgradeButtons(); // Refresh costs when opening
+    
+    if (upgradeMode) {
+      this.upgradeModeIndicator.textContent = 'UPGRADES [U to exit]';
+      this.upgradeModeIndicator.style.color = '#daa520';
+    } else {
+      this.upgradeModeIndicator.textContent = '[U] Upgrades';
+      this.upgradeModeIndicator.style.color = '#888';
     }
   },
 
@@ -1210,6 +1414,12 @@ window.addEventListener("keydown", (e)=>{
     ui.togglePowerUpMode();
     return;
   }
+
+  // Toggle upgrade mode
+  if (e.key === 'u' || e.key === 'U') {
+    ui.toggleUpgradeMode();
+    return;
+  }
   
   // Building hotkeys (only work in build mode)
   if (buildMode) {
@@ -1226,6 +1436,15 @@ window.addEventListener("keydown", (e)=>{
     if (e.key === '2') ui.buyPowerUp('instaKill', 750);
     if (e.key === '3') ui.buyPowerUp('surge', 400);
   }
+
+  // Upgrade hotkeys (only work in upgrade mode)
+  if (upgradeMode) {
+    if (e.key === '1') ui.buyUpgrade('solarPanel');
+    if (e.key === '2') ui.buyUpgrade('windTurbine');
+    if (e.key === '3') ui.buyUpgrade('powerPlant');
+    if (e.key === '4') ui.buyUpgrade('turret');
+    if (e.key === '5') ui.buyUpgrade('missileTurret');
+  }
   
   if (e.key === 'Escape') {
     if (buildMode) {
@@ -1233,6 +1452,9 @@ window.addEventListener("keydown", (e)=>{
     }
     if (powerUpMode) {
       ui.togglePowerUpMode();
+    }
+    if (upgradeMode) {
+      ui.toggleUpgradeMode();
     }
   }
 });
@@ -1556,6 +1778,53 @@ function Zombie(x, z, speed, health = 100, damage = 0.5) {
 let buildings = [];
 
 /**
+ * Apply upgrade bonuses to all buildings of a given type
+ */
+function applyUpgradeToBuildings(type) {
+  const upgrade = upgradeState[type];
+  
+  buildings.forEach(building => {
+    if (building.type === type) {
+      // Recalculate stats based on upgrade level
+      if (type === 'turret' || type === 'missileTurret') {
+        // Damage upgrade
+        const baseDamage = type === 'turret' ? 20 : 50;
+        building.turretStats.damage = baseDamage + (upgrade.level * upgrade.bonus);
+      } else {
+        // Energy generation upgrade
+        const baseRates = {
+          solarPanel: 0.5,
+          windTurbine: 0.25,
+          powerPlant: 1,
+        };
+        const baseRate = baseRates[type] || 0;
+        building.energyRate = baseRate * (1 + upgrade.level * upgrade.bonus);
+      }
+    }
+  });
+}
+
+/**
+ * Get the current stats for a building type (including upgrades)
+ */
+function getBuildingStats(type) {
+  const upgrade = upgradeState[type];
+  
+  if (type === 'turret' || type === 'missileTurret') {
+    const baseDamage = type === 'turret' ? 20 : 50;
+    return { damage: baseDamage + (upgrade.level * upgrade.bonus) };
+  } else {
+    const baseRates = {
+      solarPanel: 0.5,
+      windTurbine: 0.25,
+      powerPlant: 1,
+    };
+    const baseRate = baseRates[type] || 0;
+    return { energyRate: baseRate * (1 + upgrade.level * upgrade.bonus) };
+  }
+}
+
+/**
  * Building class for placing structures on the grid
  * @param {string} type - Building type (solarPanel, windTurbine, powerPlant)
  * @param {number} gridX - Grid X position
@@ -1613,22 +1882,30 @@ function Building(type, x, z, options = {}) {
     missileTurret: 0,
   }
 
-  this.energyRate = defaultEnergyRates[type];
+  // Apply upgrade bonus to energy rate
+  const energyUpgrade = upgradeState[type];
+  if (energyUpgrade && type !== 'turret' && type !== 'missileTurret') {
+    this.energyRate = defaultEnergyRates[type] * (1 + energyUpgrade.level * energyUpgrade.bonus);
+  } else {
+    this.energyRate = defaultEnergyRates[type];
+  }
 
   // ============================================
   // Turret Attack Configuration
   // ============================================
   
+  // Apply upgrade bonus to turret damage
+  const turretUpgrade = upgradeState[type];
   const turretConfig = {
     turret: {
-      damage: 20,
+      damage: 20 + (turretUpgrade ? turretUpgrade.level * turretUpgrade.bonus : 0),
       fireRate: 200,      // ms between shots
       range: 15,
       splashRadius: 0,    // no splash
       rotationSpeed: 0.15 // radians per frame for smooth rotation
     },
     missileTurret: {
-      damage: 50,
+      damage: 50 + (turretUpgrade ? turretUpgrade.level * turretUpgrade.bonus : 0),
       fireRate: 1000,     // ms between shots (slower)
       range: 20,
       splashRadius: 10,    // splash damage radius
@@ -2088,6 +2365,129 @@ function createPowerUpShop() {
   scene.add(shopGroup);
 }
 
+function createUpgradeShop() {
+  const shopGroup = new THREE.Group();
+
+  // --- Booth frame: dark weathered wood ---
+  const darkWood = new THREE.MeshStandardMaterial({ color: 0x4a3520, roughness: 0.95 });
+  const plankMat = new THREE.MeshStandardMaterial({ color: 0x6b4423, roughness: 0.9 });
+
+  // Back planks
+  for (let i = 0; i < 4; i++) {
+    const plank = new THREE.Mesh(new THREE.BoxGeometry(0.85, 2.8, 0.12), plankMat);
+    plank.position.set(-1.3 + i * 0.87, 1.4, -0.85);
+    plank.castShadow = true;
+    shopGroup.add(plank);
+  }
+
+  // Counter slab 
+  const counter = new THREE.Mesh(
+    new THREE.BoxGeometry(3.6, 0.18, 1.4),
+    new THREE.MeshStandardMaterial({ color: 0x8b6914, roughness: 0.7 })
+  );
+  counter.position.set(0, 1.05, 0);
+  counter.castShadow = true;
+  shopGroup.add(counter);
+
+  // Counter edge trim (gold/bronze)
+  const edgeTrim = new THREE.Mesh(
+    new THREE.BoxGeometry(3.7, 0.08, 0.12),
+    new THREE.MeshStandardMaterial({ color: 0xdaa520, roughness: 0.4, metalness: 0.4 })
+  );
+  edgeTrim.position.set(0, 1.16, 0.65);
+  shopGroup.add(edgeTrim);
+
+  // Corner posts (chunky)
+  const postGeo = new THREE.BoxGeometry(0.22, 3.2, 0.22);
+  const postMat = new THREE.MeshStandardMaterial({ color: 0x3a2515, roughness: 0.9 });
+  [[-1.75, 0], [1.75, 0]].forEach(([px, pz]) => {
+    const post = new THREE.Mesh(postGeo, postMat);
+    post.position.set(px, 1.6, pz);
+    post.castShadow = true;
+    shopGroup.add(post);
+  });
+
+  // Awning (orange/bronze theme)
+  const awning1 = new THREE.Mesh(
+    new THREE.BoxGeometry(4.0, 0.1, 2.2),
+    new THREE.MeshStandardMaterial({ color: 0xb8860b, roughness: 0.6 })
+  );
+  awning1.position.set(0, 3.2, 0.2);
+  awning1.rotation.x = -0.15;
+  awning1.castShadow = true;
+  shopGroup.add(awning1);
+
+  // Awning stripe
+  const awning2 = new THREE.Mesh(
+    new THREE.BoxGeometry(3.8, 0.06, 0.4),
+    new THREE.MeshStandardMaterial({ color: 0xdaa520, roughness: 0.5 })
+  );
+  awning2.position.set(0, 3.22, 0.9);
+  shopGroup.add(awning2);
+
+  // Front overhang drape
+  const drape = new THREE.Mesh(
+    new THREE.BoxGeometry(4.0, 0.25, 0.06),
+    new THREE.MeshStandardMaterial({ color: 0xdaa520, roughness: 0.5 })
+  );
+  drape.position.set(0, 3.08, 1.25);
+  shopGroup.add(drape);
+
+  // --- Sign with text ---
+  const signTex = makeTextTexture('UPGRADES', 72, '#ffffff', '#b8860b', 512, 128);
+  const signMat = new THREE.MeshBasicMaterial({ map: signTex });
+  const signMesh = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 0.85), signMat);
+  signMesh.position.set(0, 3.65, 0.3);
+  shopGroup.add(signMesh);
+
+  // Lanterns (warm orange)
+  const lanternMat = new THREE.MeshStandardMaterial({ color: 0xffaa22, emissive: 0xff8800, emissiveIntensity: 0.6 });
+  [[-1.75, 0], [1.75, 0]].forEach(([lx, lz]) => {
+    const lantern = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), lanternMat);
+    lantern.position.set(lx, 2.9, lz + 0.15);
+    shopGroup.add(lantern);
+    const lLight = new THREE.PointLight(0xffaa22, 0.6, 5);
+    lLight.position.set(lx, 2.9, lz + 0.15);
+    shopGroup.add(lLight);
+  });
+
+  // Tool items on counter (gears, wrench shapes)
+  const gearMat = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.3, metalness: 0.7 });
+  const gear1 = new THREE.Mesh(new THREE.TorusGeometry(0.15, 0.04, 8, 16), gearMat);
+  gear1.position.set(-0.8, 1.2, 0.2);
+  gear1.rotation.x = Math.PI / 2;
+  shopGroup.add(gear1);
+  
+  const gear2 = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.035, 8, 16), gearMat);
+  gear2.position.set(-0.5, 1.2, 0.3);
+  gear2.rotation.x = Math.PI / 2;
+  shopGroup.add(gear2);
+
+  // Wrench-like shape (box)
+  const wrench = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.35, 0.04), gearMat);
+  wrench.position.set(0.6, 1.2, 0.15);
+  wrench.rotation.z = 0.3;
+  shopGroup.add(wrench);
+
+  // Some upgrade crystals
+  const crystalColors = [0xff6600, 0xffcc00, 0xff4400];
+  crystalColors.forEach((col, i) => {
+    const crystal = new THREE.Mesh(
+      new THREE.OctahedronGeometry(0.12, 0),
+      new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 0.3, roughness: 0.2 })
+    );
+    crystal.position.set(0.9 + i * 0.25, 1.32, 0.2);
+    crystal.rotation.y = i * 0.5;
+    shopGroup.add(crystal);
+  });
+
+  // Position: next to power-up shop on Z-negative side
+  shopGroup.position.set(5, 0, -(gridConfig.totalHeight / 2 + 1.5));
+  shopGroup.rotation.y = 0; // Face towards camera
+
+  scene.add(shopGroup);
+}
+
 // ============================================
 // Game Initialization
 // ============================================
@@ -2105,6 +2505,11 @@ async function initGame() {
   // Power-Up Shop (cute 3D booth)
   // ============================================
   createPowerUpShop();
+
+  // ============================================
+  // Upgrade Shop (3D booth)
+  // ============================================
+  createUpgradeShop();
 
   // Shield Dome Visual
   const shieldGeo = new THREE.SphereGeometry(shieldRadius, 24, 16, 0, Math.PI * 2, 0, Math.PI / 2);
