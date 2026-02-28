@@ -1749,6 +1749,12 @@ function Zombie(x, z, speed, health = 100, damage = 0.5) {
 
   this.damage = damage;
   this.health = powerUpState.instaKillActive ? 1 : 100; 
+
+  // Animation state
+  this.animTime = Math.random() * Math.PI * 2; // random phase so zombies aren't in sync
+  this.isMoving = false;
+  this.isAttacking = false;
+  this.innerModel = null; // reference to the inner model for animation
   
   // Use getSync since zombie model is preloaded
   const zombieModel = modelLoader.getSync('zombie');
@@ -1764,6 +1770,10 @@ function Zombie(x, z, speed, health = 100, damage = 0.5) {
     // Offset so visual center (X,Z) is at origin and feet sit at Y=0
     zombieModel.position.set(-center.x, -minY, -center.z);
     this.mesh.add(zombieModel);
+    this.innerModel = zombieModel;
+
+    // Give the zombie a slight forward lean (zombie posture)
+    this.mesh.rotation.x = 0.1;
 
     this.mesh.position.set(x, 0, z);
     scene.add(this.mesh);
@@ -1807,6 +1817,59 @@ function Zombie(x, z, speed, health = 100, damage = 0.5) {
     this.z += this.vZ * this.speed;
     this.mesh.position.x = this.x;
     this.mesh.position.z = this.z;
+
+    // Determine movement state
+    this.isMoving = (this.vX !== 0 || this.vZ !== 0);
+
+    // Face the direction of movement
+    if (this.isMoving) {
+      const targetAngle = Math.atan2(this.vX, this.vZ);
+      this.mesh.rotation.y = targetAngle;
+    }
+
+    // Procedural animation
+    if (this.innerModel) {
+      const walkSpeed = 8; // oscillation speed for walking
+      const attackSpeed = 6; // oscillation speed for attacking
+
+      if (this.isMoving) {
+        // --- Walking animation ---
+        this.animTime += 0.1;
+        this.isAttacking = false;
+
+        const t = this.animTime * walkSpeed;
+
+        // Vertical bob (hopping up and down as it walks)
+        this.mesh.position.y = Math.abs(Math.sin(t)) * 0.15;
+
+        // Side-to-side body sway (zombie shamble)
+        this.innerModel.rotation.z = Math.sin(t) * 0.12;
+
+        // Forward lean oscillation (lurching forward)
+        this.innerModel.rotation.x = 0.15 + Math.sin(t * 2) * 0.06;
+
+        // Slight side-to-side head/body twist
+        this.innerModel.rotation.y = Math.sin(t * 0.5) * 0.08;
+      } else {
+        // --- Idle / Attacking animation ---
+        this.isAttacking = true;
+        this.animTime += 0.08;
+
+        const t = this.animTime * attackSpeed;
+
+        // Settle back to ground
+        this.mesh.position.y = 0;
+
+        // Lunging attack motion: rock forward and back
+        this.innerModel.rotation.x = 0.1 + Math.sin(t) * 0.2;
+
+        // Slight side sway while attacking
+        this.innerModel.rotation.z = Math.sin(t * 0.7) * 0.06;
+
+        // Reset twist
+        this.innerModel.rotation.y = 0;
+      }
+    }
 
     if(this.targetBuilding != null && this.targetBuilding != undefined){
       if(this.targetBuilding.health <= 0){
