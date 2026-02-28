@@ -1,0 +1,11 @@
+Model Information:
+* title:	Cooling- Tower
+* source:	https://sketchfab.com/3d-models/cooling-tower-a1b0b8e8f3764560a730799218dd539d
+* author:	datresh101 (https://sketchfab.com/password_fox)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Cooling- Tower" (https://sketchfab.com/3d-models/cooling-tower-a1b0b8e8f3764560a730799218dd539d) by datresh101 (https://sketchfab.com/password_fox) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

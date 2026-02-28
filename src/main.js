@@ -50,7 +50,7 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87CEEB); // Sky blue
 
 // Add fog for atmosphere (color, near distance, far distance)
-scene.fog = new THREE.Fog(0x87CEEB, 25, 100);
+scene.fog = new THREE.Fog(0x87CEEB, 10, 75);
 
 // Create a gradient sky using a large sphere
 const skyGeometry = new THREE.SphereGeometry(500, 32, 32);
@@ -98,7 +98,7 @@ const modelLoader = {
     zombie: '/models/low_poly_zombie/scene.gltf',
     solarPanel: '/models/painel_solar/scene.gltf',
     windTurbine: '/models/low_poly_wind_turbine/scene.gltf',
-    powerPlant: '/models/power_plant_level_two/scene.gltf',
+    powerPlant: '/models/cooling-_tower/scene.gltf',
     map: '/models/the_map/Hackathon1.gltf',
   },
 
@@ -753,7 +753,7 @@ function Building(type, x, z, options = {}) {
   const defaultScales = {
     solarPanel: 0.10,
     windTurbine: 1.5,     
-    powerPlant: 0.025,    
+    powerPlant: .1,    
   };
 
   // Manual position corrections for off-center models (in world units, applied after scaling)
@@ -784,6 +784,20 @@ function Building(type, x, z, options = {}) {
     // Apply scale
     const scale = options.scale || defaultScales[type] || 1;
     model.scale.setScalar(scale);
+    
+    // Apply custom color for specific building types
+    const buildingColors = {
+      powerPlant: 0xffffff, 
+    };
+    
+    if (buildingColors[type]) {
+      model.traverse((child) => {
+        if (child.isMesh) {
+          child.material = child.material.clone(); // Clone to avoid affecting other instances
+          child.material.color.setHex(buildingColors[type]);
+        }
+      });
+    }
     
     // Calculate bounding box to center the model
     const box = new THREE.Box3().setFromObject(model);
@@ -937,7 +951,7 @@ async function initGame() {
     const size = box.getSize(new THREE.Vector3());
     
     // Position map centered at origin, sitting on ground
-    mapModel.position.set(-center.x+27.5, -box.min.y - 10, -center.z-7);
+    mapModel.position.set(-center.x+30, -box.min.y-10, -center.z-110);
     
     scene.add(mapModel);
   }
