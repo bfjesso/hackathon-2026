@@ -6,9 +6,8 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 // Game State
 // ============================================
 
-let energy = 0;
+let energy = 500;
 let health = 100;
-let money = 500;
 let buildMode = false;
 
 // ============================================
@@ -156,7 +155,6 @@ window.modelLoader = modelLoader;
 
 const ui = {
   container: null,
-  moneyDisplay: null,
   healthDisplay: null,
   energyDisplay: null,
   buildModeIndicator: null,
@@ -191,10 +189,7 @@ const ui = {
       color: white;
       pointer-events: auto;
     `;
-    
-    this.moneyDisplay = document.createElement('div');
-    this.moneyDisplay.style.cssText = 'font-size: 24px; color: #ffd700; margin-bottom: 8px;';
-    
+  
     this.healthDisplay = document.createElement('div');
     this.healthDisplay.style.cssText = 'font-size: 18px; color: #ff6b6b; margin-bottom: 5px;';
     
@@ -205,7 +200,6 @@ const ui = {
     this.buildModeIndicator.style.cssText = 'font-size: 14px; color: #888; margin-top: 5px; padding-top: 10px; border-top: 1px solid #444;';
     this.buildModeIndicator.textContent = '[B] Build Mode';
     
-    statsPanel.appendChild(this.moneyDisplay);
     statsPanel.appendChild(this.healthDisplay);
     statsPanel.appendChild(this.energyDisplay);
     statsPanel.appendChild(this.buildModeIndicator);
@@ -235,7 +229,7 @@ const ui = {
 
     buildingTypes.forEach(building => {
       const btn = document.createElement('button');
-      btn.textContent = `[${building.hotkey}] ${building.name} ($${building.cost})`;
+      btn.textContent = `[${building.hotkey}] ${building.name} ${building.cost} Joules`;
       btn.dataset.buildingType = building.key;
       btn.dataset.cost = building.cost;
       btn.style.cssText = `
@@ -325,9 +319,8 @@ const ui = {
   },
 
   update() {
-    this.moneyDisplay.textContent = `💰 $${money}`;
     this.healthDisplay.textContent = `❤️ Health: ${health}`;
-    this.energyDisplay.textContent = `⚡ Energy: ${Math.round(energy)}`;
+    this.energyDisplay.textContent = `⚡ Energy: ${Math.round(energy)} Joules`;
   }
 };
 
@@ -561,7 +554,7 @@ window.addEventListener('mousemove', (event) => {
       hoverIndicator.visible = true;
       
       // Color based on can place or not
-      if (isCellEmpty(gridPos.x, gridPos.z) && money >= ui.selectedBuildingCost) {
+      if (isCellEmpty(gridPos.x, gridPos.z) && energy >= ui.selectedBuildingCost) {
         hoverMaterial.color.setHex(0x00ff00); // Green = can place
       } else {
         hoverMaterial.color.setHex(0xff0000); // Red = can't place
@@ -588,11 +581,11 @@ window.addEventListener('click', (event) => {
     const point = intersects[0].point;
     const gridPos = worldToGrid(point.x, point.z);
     
-    if (isCellEmpty(gridPos.x, gridPos.z) && money >= ui.selectedBuildingCost) {
+    if (isCellEmpty(gridPos.x, gridPos.z) && energy >= ui.selectedBuildingCost) {
       const worldPos = gridToWorld(gridPos.x, gridPos.z);
       
-      // Deduct money
-      money -= ui.selectedBuildingCost;
+      // Deduct energy
+      energy -= ui.selectedBuildingCost;
       
       // Place building
       const building = placeBuildingOnGrid(ui.selectedBuilding, gridPos.x, gridPos.z);
