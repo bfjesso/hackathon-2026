@@ -2528,7 +2528,7 @@ async function initGame() {
     const size = box.getSize(new THREE.Vector3());
     
     // Position map centered at origin, sitting on ground
-    mapModel.position.set(-center.x+30, -box.min.y-10, -center.z-110);
+    mapModel.position.set(-center.x+22.5, -box.min.y-3, -center.z-101.5);
     
     // Enable shadows for map
     mapModel.traverse((child) => {
