@@ -366,8 +366,7 @@ function spawnZombie() {
   
   const zombie = new Zombie(-15, getRandomInRange(-15, 15), 0.1); // Spawn at edge, random Z
   const randBuilding = buildings[getRandomInRange(0, buildings.length - 1)];
-
-  console.log(randBuilding);
+  zombie.targetBuilding = randBuilding;
 
   let xDiff = (randBuilding.x - zombie.x);
   let zDiff = (randBuilding.z - zombie.z);
@@ -615,8 +614,10 @@ function Zombie(x, z, speed) {
   this.z = z;
   this.vX = 0;
   this.vZ = 0;
-
   this.speed = speed;
+
+  this.targetBuilding = null;
+  this.damage = 0.1;
   
   // Use getSync since zombie model is preloaded
   this.mesh = modelLoader.getSync('zombie');
@@ -633,6 +634,20 @@ function Zombie(x, z, speed) {
     this.z += this.vZ * this.speed;
     this.mesh.position.x = this.x;
     this.mesh.position.z = this.z;
+
+    if(this.targetBuilding != null && this.targetBuilding != undefined){
+      let xDiff = this.targetBuilding.x - this.x;
+      let zDiff = this.targetBuilding.z - this.z;
+      let distanceToTarget = Math.sqrt(xDiff * xDiff + zDiff * zDiff);
+
+      if(distanceToTarget < 2){
+        this.vX = 0;
+        this.vZ = 0;
+        
+        this.targetBuilding.health -= this.damage;
+      }
+    }
+    
   }
 
   this.destroy = function destroy() {
@@ -721,10 +736,61 @@ function Building(type, x, z, options = {}) {
     this.mesh.rotation.y = rotation;
     
     scene.add(this.mesh);
+
+    // --- Health Bar ---
+    const barWidth = 2;
+    const barHeight = 0.25;
+    const barY = box.max.y - minY + 1.2; // float above the model top
+
+    // Background (dark red)
+    const bgGeo = new THREE.PlaneGeometry(barWidth, barHeight);
+    const bgMat = new THREE.MeshBasicMaterial({ color: 0x222222, transparent: true, opacity: 0.8, depthTest: false });
+    this.healthBarBg = new THREE.Mesh(bgGeo, bgMat);
+    this.healthBarBg.renderOrder = 999;
+
+    // Foreground (green -> red gradient based on health)
+    const fgGeo = new THREE.PlaneGeometry(barWidth, barHeight);
+    const fgMat = new THREE.MeshBasicMaterial({ color: 0x00cc44, transparent: true, opacity: 0.9, depthTest: false });
+    this.healthBarFg = new THREE.Mesh(fgGeo, fgMat);
+    this.healthBarFg.renderOrder = 1000;
+
+    // Group them so we can position / billboard together
+    this.healthBarGroup = new THREE.Group();
+    this.healthBarGroup.position.set(0, barY, 0);
+    this.healthBarGroup.add(this.healthBarBg);
+    this.healthBarGroup.add(this.healthBarFg);
+    this.healthBarGroup.visible = false; // hidden at full health
+    this.mesh.add(this.healthBarGroup);
   }
 
   this.update = function update() {
     energy += this.energyRate;
+
+    // Update health bar visibility and scale
+    if (this.healthBarGroup) {
+      if (this.health < 100) {
+        this.healthBarGroup.visible = true;
+        const pct = Math.max(this.health, 0) / 100;
+        this.healthBarFg.scale.x = pct;
+        // Shift foreground so it stays left-aligned
+        this.healthBarFg.position.x = -(1 - pct);
+
+        // Color: green at high health, yellow in the middle, red at low
+        const r = pct < 0.5 ? 1 : 1 - (pct - 0.5) * 2;
+        const g = pct > 0.5 ? 1 : pct * 2;
+        this.healthBarFg.material.color.setRGB(r, g, 0);
+
+        // Billboard: make the health bar face the camera
+        this.healthBarGroup.quaternion.copy(camera.quaternion);
+      } else {
+        this.healthBarGroup.visible = false;
+      }
+    }
+
+    // Destroy building when health reaches 0
+    if (this.health <= 0) {
+      this.destroy();
+    }
   }
 
   this.destroy = function destroy() {
