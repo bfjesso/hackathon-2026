@@ -103,44 +103,11 @@ const scene = new THREE.Scene();
 // Skybox and Fog
 // ============================================
 
-// Set sky color as scene background - more vibrant
-scene.background = new THREE.Color(0x90c8ff); // Brighter sky blue
+// Set sky color as scene background
+scene.background = new THREE.Color(0x90c8ff); // Solid sky blue
 
 // Add fog for atmosphere (color, near distance, far distance)
-scene.fog = new THREE.Fog(0x90c8ff, 20, 100);
-
-// Create a gradient sky using a large sphere
-const skyGeometry = new THREE.SphereGeometry(500, 32, 32);
-const skyMaterial = new THREE.ShaderMaterial({
-  uniforms: {
-    topColor: { value: new THREE.Color(0x5599ff) },    // Vibrant blue at top
-    bottomColor: { value: new THREE.Color(0xaaddff) }, // Light blue at horizon
-    offset: { value: 33 },
-    exponent: { value: 0.6 }
-  },
-  vertexShader: `
-    varying vec3 vWorldPosition;
-    void main() {
-      vec4 worldPosition = modelMatrix * vec4(position, 1.0);
-      vWorldPosition = worldPosition.xyz;
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-    }
-  `,
-  fragmentShader: `
-    uniform vec3 topColor;
-    uniform vec3 bottomColor;
-    uniform float offset;
-    uniform float exponent;
-    varying vec3 vWorldPosition;
-    void main() {
-      float h = normalize(vWorldPosition + offset).y;
-      gl_FragColor = vec4(mix(bottomColor, topColor, max(pow(max(h, 0.0), exponent), 0.0)), 1.0);
-    }
-  `,
-  side: THREE.BackSide
-});
-const sky = new THREE.Mesh(skyGeometry, skyMaterial);
-scene.add(sky);
+scene.fog = new THREE.Fog(0x90c8ff, 10, 100);
 
 // ============================================
 // Tracer System
