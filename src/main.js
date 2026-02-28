@@ -7,6 +7,65 @@ function getRandomInRange(min, max) {
 }
 
 // ============================================
+// Sound System (Web Audio API — near-zero overhead)
+// ============================================
+
+const SoundManager = (() => {
+  let ctx = null;
+  const sounds = {};
+
+  // Lazily create AudioContext (must happen after user gesture)
+  function getCtx() {
+    if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (ctx.state === 'suspended') ctx.resume();
+    return ctx;
+  }
+
+  // Fetch + decode an audio file into a reusable buffer
+  async function preload(name, src, volume = 1.0, cooldownMs = 0) {
+    sounds[name] = { buffer: null, volume, cooldownMs, lastPlayed: 0 };
+    try {
+      const resp = await fetch(src);
+      const arrayBuf = await resp.arrayBuffer();
+      sounds[name].buffer = await getCtx().decodeAudioData(arrayBuf);
+    } catch (e) {
+      console.warn(`SoundManager: failed to load "${name}"`, e);
+    }
+  }
+
+  function play(name) {
+    const s = sounds[name];
+    if (!s || !s.buffer) return;
+
+    // Cooldown check — skip if fired too recently (prevents stacking)
+    const now = performance.now();
+    if (s.cooldownMs > 0 && now - s.lastPlayed < s.cooldownMs) return;
+    s.lastPlayed = now;
+
+    const c = getCtx();
+    const source = c.createBufferSource();
+    source.buffer = s.buffer;
+
+    const gain = c.createGain();
+    gain.gain.value = s.volume;
+
+    source.connect(gain).connect(c.destination);
+    source.start(0);
+    // BufferSourceNode is auto-collected by GC after playback — no cleanup needed
+  }
+
+  // Pre-load all game sounds (non-blocking)
+  // cooldown prevents rapid-fire stacking for turret sounds
+  preload('build',     '/sounds/build.mp3',      0.5, 0);
+  preload('explosion', '/sounds/explosion.mp3',   0.4, 300);   // max 1 every 300ms
+  preload('gunshot',   '/sounds/gun-shot.mp3',    0.3, 120);   // max 1 every 120ms
+  preload('splat',     '/sounds/splat.mp3',       0.5, 80);    // max 1 every 80ms
+  preload('newRound',  '/sounds/new-round.mp3',   0.6, 0);
+
+  return { play };
+})();
+
+// ============================================
 // Game State
 // ============================================
 
@@ -1080,6 +1139,7 @@ function startRound() {
   // Reset timer
   roundTimeRemaining = roundConfig.roundTimeLimit;
   
+  SoundManager.play('newRound');
   console.log(`Round ${currentRound} started! Kill ${zombiesToKillThisRound} zombies. Max on screen: ${currentMaxZombies}`);
 }
 
@@ -1647,6 +1707,7 @@ window.addEventListener('click', (event) => {
       
       // Place building
       const building = placeBuildingOnGrid(ui.selectedBuilding, gridPos.x, gridPos.z);
+      SoundManager.play('build');
       console.log(`Placed ${ui.selectedBuilding} at grid (${gridPos.x}, ${gridPos.z})`);
       
       // Update grid rings to show new occupied cell
@@ -1763,6 +1824,7 @@ function Zombie(x, z, speed, health = 100, damage = 0.5) {
     if (this.mesh) {
       scene.remove(this.mesh);
     }
+    SoundManager.play('splat');
     // Track kill for round system
     onZombieKilled();
     // Remove from zombies array
@@ -2113,6 +2175,9 @@ function Building(type, x, z, options = {}) {
     // Create tracer effect
     const tracerType = this.type === 'missileTurret' ? 'missile' : 'bullet';
     createTracer(this.x, this.z, this.targetZombie.x, this.targetZombie.z, tracerType);
+    
+    // Play turret sound
+    SoundManager.play(this.type === 'missileTurret' ? 'explosion' : 'gunshot');
     
     // Apply damage to target
     this.targetZombie.health -= this.turretStats.damage;
@@ -2542,6 +2607,9 @@ async function initGame() {
   }
   
   console.log('Game assets loaded! Starting game...');
+  
+  // Play new-round sound at game start
+  SoundManager.play('newRound');
   
   // Start the game loop
   gameLoopInterval = window.setInterval(gameLoop, renderRate);
