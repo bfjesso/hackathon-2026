@@ -16,9 +16,9 @@ let buildMode = false;
 // ============================================
 
 const gridConfig = {
-  cellSize: 1,      // Size of each grid cell in world units
-  gridWidth: 30,    // Number of cells in X direction
-  gridHeight: 30,   // Number of cells in Z direction
+  cellSize: 3,      // Size of each grid cell in world units
+  gridWidth: 10,    // Number of cells in X direction
+  gridHeight: 10,   // Number of cells in Z direction
   
   // Computed properties
   get totalWidth() { return this.cellSize * this.gridWidth; },
@@ -605,7 +605,7 @@ function Zombie(x, z) {
   this.mesh = modelLoader.getSync('zombie');
   if (this.mesh) {
     this.mesh.position.set(x, 0, z);
-    this.mesh.scale.setScalar(0.5); // Adjust scale as needed
+    this.mesh.scale.setScalar(0.1); // Zombie model is ~8 units, scale to ~0.8
     scene.add(this.mesh);
   }
 
@@ -647,19 +647,52 @@ function Building(type, worldX, worldZ, options = {}) {
   this.mesh = null;
 
   const defaultScales = {
-    solarPanel: 0.5,
-    windTurbine: 0.3,
-    powerPlant: 0.4,
+    solarPanel: 0.005,    // Model is ~5400 units, scale to fit grid cell
+    windTurbine: 1.5,     // Model is ~4 units, scale to ~1.2 units
+    powerPlant: 0.025,    // Model is ~600 units, scale to fit grid cell
+  };
+
+  // Manual position corrections for off-center models (in world units, applied after scaling)
+  const positionCorrections = {
+    solarPanel: { x: 6, y: 0, z: 0 },  // Solar panel model is offset to the left
+    windTurbine: { x: 0, y: 0, z: 0 },
+    powerPlant: { x: 0, y: 0, z: 0 },
+  };
+
+  // Default rotations for models (in radians)
+  const defaultRotations = {
+    solarPanel: Math.PI / 4,  // 45 degrees CCW
+    windTurbine: 0,
+    powerPlant: 0,
   };
 
   // Use getSync since models are preloaded
-  this.mesh = modelLoader.getSync(type);
-  if (this.mesh) {
+  const model = modelLoader.getSync(type);
+  if (model) {
+    // Apply scale
+    const scale = options.scale || defaultScales[type] || 1;
+    model.scale.setScalar(scale);
+    
+    // Calculate bounding box to center the model
+    const box = new THREE.Box3().setFromObject(model);
+    const center = box.getCenter(new THREE.Vector3());
+    const minY = box.min.y;
+    
+    // Create a container group to hold the model centered
+    this.mesh = new THREE.Group();
+    
+    // Offset the model so its center (X,Z) is at origin and bottom is at Y=0
+    const correction = positionCorrections[type] || { x: 0, y: 0, z: 0 };
+    model.position.set(-center.x + correction.x, -minY + correction.y, -center.z + correction.z);
+    this.mesh.add(model);
+    
+    // Position container at grid cell
     this.mesh.position.set(worldX, 0, worldZ);
-    this.mesh.scale.setScalar(options.scale || defaultScales[type] || 1);
-    if (options.rotationY !== undefined) {
-      this.mesh.rotation.y = options.rotationY;
-    }
+    
+    // Apply rotation (use provided option or default for this type)
+    const rotation = options.rotationY !== undefined ? options.rotationY : (defaultRotations[type] || 0);
+    this.mesh.rotation.y = rotation;
+    
     scene.add(this.mesh);
   }
 
