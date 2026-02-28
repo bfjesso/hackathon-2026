@@ -19,6 +19,36 @@ let gameLoopInterval = null;
 const hydroElectricRate = 0.25;
 
 // ============================================
+// Damage Flash Effect
+// ============================================
+
+const damageFlash = document.createElement('div');
+damageFlash.style.cssText = `
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: radial-gradient(ellipse at center, rgba(255, 0, 0, 0) 0%, rgba(255, 0, 0, 0.6) 100%);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.1s ease-in;
+  z-index: 50;
+`;
+document.body.appendChild(damageFlash);
+
+function triggerDamageFlash() {
+  damageFlash.style.opacity = '1';
+  setTimeout(() => {
+    damageFlash.style.transition = 'opacity 0.4s ease-out';
+    damageFlash.style.opacity = '0';
+    setTimeout(() => {
+      damageFlash.style.transition = 'opacity 0.1s ease-in';
+    }, 400);
+  }, 50);
+}
+
+// ============================================
 // Grid Configuration
 // ============================================
 
@@ -960,6 +990,7 @@ function Zombie(x, z, speed) {
 
         if(playerHealth > 0) {
           playerHealth -= this.damage;
+          triggerDamageFlash();
         } else { 
           playerHealth = 0;
         }
