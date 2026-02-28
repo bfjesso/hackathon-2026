@@ -408,13 +408,13 @@ function spawnZombie() {
     return;
   }
   
-  const zombie = new Zombie(-15, getRandomInRange(-15, 15), 0.1); // Spawn at edge, random Z
+  const zombie = new Zombie(-15, getRandomInRange(-15, 15), 0.5); // Spawn at edge, random Z
   zombie.findTarget();
 
   zombies.push(zombie);
 }
 
-const renderRate = 20;
+const renderRate = 100;
 
 let currentTime = 0; // in miliseconds
 function gameLoop() {
@@ -653,7 +653,7 @@ function Zombie(x, z, speed) {
   this.speed = speed;
 
   this.targetBuilding = null;
-  this.damage = 0.1;
+  this.damage = 0.5;
   
   // Use getSync since zombie model is preloaded
   this.mesh = modelLoader.getSync('zombie');
