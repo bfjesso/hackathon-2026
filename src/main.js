@@ -1,18 +1,15 @@
 import './style.css'
 import * as THREE from 'three';
 
+let energy = 0;
+let health = 100;
+
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 0.1, 1000 );
 
 const renderer = new THREE.WebGLRenderer();
 renderer.setSize( window.innerWidth, window.innerHeight );
-renderer.setAnimationLoop( animate );
 document.body.appendChild( renderer.domElement );
-
-const geometry = new THREE.BoxGeometry( 1, 1, 1 );
-const material = new THREE.MeshBasicMaterial( { color: 0x00ff00, wireframe: true } );
-const cube = new THREE.Mesh( geometry, material );
-scene.add( cube );
 
 const gridHeper = new THREE.GridHelper(30, 30);
 scene.add(gridHeper);
@@ -20,14 +17,36 @@ scene.add(gridHeper);
 camera.position.z = 5;
 camera.position.y = 1;
 
-function animate( time ) {
+const cubeGeometry = new THREE.BoxGeometry( 1, 1, 1 );
+const cubeMaterial = new THREE.MeshBasicMaterial( { color: 0x00ff00, wireframe: true } );
 
-  cube.rotation.x = time / 2000;
-  cube.rotation.y = time / 1000;
+let zombies = [];
 
-  renderer.render( scene, camera );
+function spawnZombie() {
+  const zombie = new Zombie(-5, 0);
 
+  zombie.vX = 0.1;
+  zombies.push(zombie);
 }
+
+const renderRate = 20;
+
+let currentTime = 0; // in miliseconds
+function gameLoop() {
+  if(currentTime % 1000 == 0){
+    spawnZombie();
+  }
+  
+  for(let i = 0; i < zombies.length; i++){
+    zombies[i].update();
+  }
+
+  currentTime += renderRate;
+  
+  renderer.render( scene, camera );
+}
+
+window.setInterval(gameLoop, renderRate);
 
 window.addEventListener("resize", ()=>{
   camera.aspect= window.innerWidth / window.innerHeight;
@@ -49,3 +68,20 @@ window.addEventListener("keydown", (e)=>{
     cube.position.y -= 0.5;
   }
 });
+
+function Zombie(x, y){
+  this.mesh = new THREE.Mesh( cubeGeometry, cubeMaterial );
+  
+  this.mesh.position.x = x;
+  this.mesh.position.y = y;
+
+  this.vX = 0;
+  this.vY = 0;
+
+  scene.add( this.mesh );
+
+  this.update = function update() {
+    this.mesh.position.x += this.vX;
+    this.mesh.position.y += this.vY;
+  }
+}
