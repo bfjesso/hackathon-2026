@@ -11,7 +11,7 @@ function getRandomInRange(min, max) {
 // ============================================
 
 let energy = 500;
-let health = 100;
+let playerHealth = 100;
 let buildMode = false;
 let gameOver = false;
 let gameLoopInterval = null;
@@ -88,6 +88,121 @@ const skyMaterial = new THREE.ShaderMaterial({
 });
 const sky = new THREE.Mesh(skyGeometry, skyMaterial);
 scene.add(sky);
+
+// ============================================
+// Tracer System
+// ============================================
+
+const tracers = [];
+
+/**
+ * Create a tracer effect from turret to target
+ * @param {number} startX - Start X position
+ * @param {number} startZ - Start Z position  
+ * @param {number} endX - End X position
+ * @param {number} endZ - End Z position
+ * @param {string} type - 'bullet' or 'missile'
+ */
+function createTracer(startX, startZ, endX, endZ, type = 'bullet') {
+  const startY = 2; // Height of turret barrel
+  const endY = 1;   // Height of zombie center
+  
+  if (type === 'bullet') {
+    // Fast bullet tracer - thin yellow line
+    const points = [
+      new THREE.Vector3(startX, startY, startZ),
+      new THREE.Vector3(endX, endY, endZ)
+    ];
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    const material = new THREE.LineBasicMaterial({ 
+      color: 0xffff00, 
+      transparent: true, 
+      opacity: 1.0 
+    });
+    const line = new THREE.Line(geometry, material);
+    scene.add(line);
+    
+    tracers.push({
+      mesh: line,
+      lifetime: 100,  // ms
+      createdAt: Date.now(),
+      type: 'line'
+    });
+  } else if (type === 'missile') {
+    // Missile tracer - thicker orange/red with trail
+    const points = [
+      new THREE.Vector3(startX, startY, startZ),
+      new THREE.Vector3(endX, endY, endZ)
+    ];
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    const material = new THREE.LineBasicMaterial({ 
+      color: 0xff4400, 
+      transparent: true, 
+      opacity: 1.0,
+      linewidth: 3
+    });
+    const line = new THREE.Line(geometry, material);
+    scene.add(line);
+    
+    // Add explosion effect at impact point
+    const explosionGeometry = new THREE.SphereGeometry(0.5, 8, 8);
+    const explosionMaterial = new THREE.MeshBasicMaterial({ 
+      color: 0xff6600, 
+      transparent: true, 
+      opacity: 0.8 
+    });
+    const explosion = new THREE.Mesh(explosionGeometry, explosionMaterial);
+    explosion.position.set(endX, endY, endZ);
+    scene.add(explosion);
+    
+    tracers.push({
+      mesh: line,
+      lifetime: 150,
+      createdAt: Date.now(),
+      type: 'line'
+    });
+    
+    tracers.push({
+      mesh: explosion,
+      lifetime: 300,
+      createdAt: Date.now(),
+      type: 'explosion',
+      maxScale: 3
+    });
+  }
+}
+
+/**
+ * Update all active tracers (call in game loop)
+ */
+function updateTracers() {
+  const now = Date.now();
+  
+  for (let i = tracers.length - 1; i >= 0; i--) {
+    const tracer = tracers[i];
+    const age = now - tracer.createdAt;
+    const progress = age / tracer.lifetime;
+    
+    if (progress >= 1) {
+      // Remove expired tracer
+      scene.remove(tracer.mesh);
+      if (tracer.mesh.geometry) tracer.mesh.geometry.dispose();
+      if (tracer.mesh.material) tracer.mesh.material.dispose();
+      tracers.splice(i, 1);
+    } else {
+      // Fade out tracer
+      if (tracer.mesh.material) {
+        tracer.mesh.material.opacity = 1 - progress;
+      }
+      
+      // Expand explosion effect
+      if (tracer.type === 'explosion') {
+        const scale = 1 + progress * (tracer.maxScale - 1);
+        tracer.mesh.scale.setScalar(scale);
+      }
+    }
+  }
+}
 
 // ============================================
 // Model Loader System
@@ -357,7 +472,7 @@ const ui = {
   },
 
   update() {
-    this.healthDisplay.textContent = `❤️ Health: ${health}`;
+    this.healthDisplay.textContent = `❤️ Health: ${playerHealth}`;
     this.energyDisplay.textContent = `⚡ Energy: ${Math.round(energy)} Joules`;
   }
 };
@@ -411,8 +526,8 @@ function gameLoop() {
   if (gameOver) return;
 
   // Check for game over
-  if (health <= 0) {
-    health = 0;
+  if (playerHealth <= 0) {
+    playerHealth = 0;
     gameOver = true;
     ui.update();
     showGameOverScreen();
@@ -431,6 +546,9 @@ function gameLoop() {
   for(let i = 0; i < buildings.length; i++){
     buildings[i].update();
   }
+
+  // Update tracer effects
+  updateTracers();
 
   energy += hydroElectricRate;
 
@@ -789,10 +907,10 @@ function Zombie(x, z, speed) {
         this.vX = 0;
         this.vZ = 0;
 
-        if(this.health > 0) {
-          this.health -= this.damage;
+        if(playerHealth > 0) {
+          playerHealth -= this.damage;
         } else { 
-          health = 0;
+          playerHealth = 0;
         }
       }
 
@@ -837,7 +955,7 @@ function Building(type, x, z, options = {}) {
     solarPanel: 0.10,
     windTurbine: 2,     
     powerPlant: 0.3,
-    turret: 1.0,
+    turret: .3,
     missileTurret: 0.5,
   };
 
@@ -885,7 +1003,7 @@ function Building(type, x, z, options = {}) {
       damage: 50,
       fireRate: 1000,     // ms between shots (slower)
       range: 20,
-      splashRadius: 5,    // splash damage radius
+      splashRadius: 10,    // splash damage radius
       rotationSpeed: 0.08 // slower rotation for missile turret
     }
   };
@@ -941,10 +1059,10 @@ function Building(type, x, z, options = {}) {
     
     scene.add(this.mesh);
 
-    // --- Health Bar ---
+    // --- Health Bar (added to scene, not building, so it doesn't rotate) ---
     const barWidth = 2;
     const barHeight = 0.25;
-    const barY = box.max.y - minY + 1.2; // float above the model top
+    this.healthBarY = box.max.y - minY + 1.2; // float above the model top
 
     // Background (dark red)
     const bgGeo = new THREE.PlaneGeometry(barWidth, barHeight);
@@ -960,11 +1078,11 @@ function Building(type, x, z, options = {}) {
 
     // Group them so we can position / billboard together
     this.healthBarGroup = new THREE.Group();
-    this.healthBarGroup.position.set(0, barY, 0);
+    this.healthBarGroup.position.set(x, this.healthBarY, z); // Position at building location
     this.healthBarGroup.add(this.healthBarBg);
     this.healthBarGroup.add(this.healthBarFg);
     this.healthBarGroup.visible = false; // hidden at full health
-    this.mesh.add(this.healthBarGroup);
+    scene.add(this.healthBarGroup); // Add to scene, not building mesh
   }
 
   this.update = function update() {
@@ -1076,6 +1194,10 @@ function Building(type, x, z, options = {}) {
   this.fireAtTarget = function() {
     if (!this.targetZombie) return;
     
+    // Create tracer effect
+    const tracerType = this.type === 'missileTurret' ? 'missile' : 'bullet';
+    createTracer(this.x, this.z, this.targetZombie.x, this.targetZombie.z, tracerType);
+    
     // Apply damage to target
     this.targetZombie.health -= this.turretStats.damage;
     
@@ -1091,9 +1213,8 @@ function Building(type, x, z, options = {}) {
         const dist = Math.sqrt(dx * dx + dz * dz);
         
         if (dist <= this.turretStats.splashRadius) {
-          // Splash damage decreases with distance
-          const splashDamage = this.turretStats.damage * (1 - dist / this.turretStats.splashRadius) * 0.5;
-          zombie.health -= splashDamage;
+          // Full splash damage to all zombies in radius
+          zombie.health -= this.turretStats.damage;
         }
       }
     }
@@ -1107,6 +1228,10 @@ function Building(type, x, z, options = {}) {
   this.destroy = function destroy() {
     if (this.mesh) {
       scene.remove(this.mesh);
+    }
+    // Remove health bar from scene
+    if (this.healthBarGroup) {
+      scene.remove(this.healthBarGroup);
     }
     // Remove from grid
     if (this.gridX !== null && this.gridZ !== null) {
