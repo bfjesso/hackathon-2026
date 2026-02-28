@@ -963,14 +963,6 @@ function gameLoop() {
   // Update round system
   updateRound();
 
-  // Animate power-up shop character
-  if (shopCharacter) {
-    shopCharacter.position.y = 0.45 + Math.sin(Date.now() * 0.003) * 0.1;
-  }
-  if (shopSign) {
-    shopSign.position.y = 3.8 + Math.sin(Date.now() * 0.002) * 0.05;
-  }
-
   // Tick power-up timers
   if (powerUpState.shieldTimer > 0) {
     powerUpState.shieldTimer -= renderRate;
@@ -1932,8 +1924,6 @@ window.grid = grid;
 // Power-Up Shop (3D Object)
 // ============================================
 
-let shopCharacter = null;
-let shopSign = null;
 let shieldMesh = null;
 
 // ===== SHIELD VISUAL — adjust position here =====
@@ -2034,81 +2024,11 @@ function createPowerUpShop() {
   drape.position.set(0, 3.08, 1.25);
   shopGroup.add(drape);
 
-  // --- Shopkeeper character ---
-  const guy = new THREE.Group();
-
-  // Body (round-ish cylinder)
-  const bodyGeo = new THREE.CylinderGeometry(0.28, 0.32, 0.75, 8);
-  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x22aa55, roughness: 0.7 });
-  const body = new THREE.Mesh(bodyGeo, bodyMat);
-  body.position.y = 0.38;
-  body.castShadow = true;
-  guy.add(body);
-
-  // Head (sphere, not box)
-  const head = new THREE.Mesh(
-    new THREE.SphereGeometry(0.28, 12, 10),
-    new THREE.MeshStandardMaterial({ color: 0xf5c99a, roughness: 0.8 })
-  );
-  head.position.y = 1.0;
-  head.castShadow = true;
-  guy.add(head);
-
-  // Eyes – white sclera + dark pupil
-  [[-0.1, 0], [0.1, 0]].forEach(([ex]) => {
-    const sclera = new THREE.Mesh(
-      new THREE.SphereGeometry(0.06, 8, 8),
-      new THREE.MeshBasicMaterial({ color: 0xffffff })
-    );
-    sclera.position.set(ex, 1.04, 0.24);
-    guy.add(sclera);
-    const pupil = new THREE.Mesh(
-      new THREE.SphereGeometry(0.035, 6, 6),
-      new THREE.MeshBasicMaterial({ color: 0x111111 })
-    );
-    pupil.position.set(ex, 1.04, 0.29);
-    guy.add(pupil);
-  });
-
-  // Mouth
-  const mouth = new THREE.Mesh(
-    new THREE.TorusGeometry(0.07, 0.018, 6, 10, Math.PI),
-    new THREE.MeshBasicMaterial({ color: 0x333333 })
-  );
-  mouth.position.set(0, 0.91, 0.26);
-  mouth.rotation.x = Math.PI;
-  guy.add(mouth);
-
-  // Cap (flat beret)
-  const cap = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.32, 0.28, 0.12, 10),
-    new THREE.MeshStandardMaterial({ color: 0x884422, roughness: 0.7 })
-  );
-  cap.position.y = 1.28;
-  cap.castShadow = true;
-  guy.add(cap);
-
-  // Arms
-  const armMat = new THREE.MeshStandardMaterial({ color: 0x22aa55 });
-  const lArm = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.45, 0.12), armMat);
-  lArm.position.set(-0.38, 0.5, 0);
-  lArm.rotation.z = 0.25;
-  guy.add(lArm);
-  const rArm = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.45, 0.12), armMat);
-  rArm.position.set(0.38, 0.58, 0);
-  rArm.rotation.z = -0.5;
-  guy.add(rArm);
-
-  guy.position.set(0, 0.5, -0.35);
-  shopCharacter = guy;
-  shopGroup.add(guy);
-
   // --- Sign with actual readable text via canvas texture ---
   const signTex = makeTextTexture('POWER UPS', 72, '#ffffff', '#228833', 512, 128);
   const signMat = new THREE.MeshBasicMaterial({ map: signTex });
   const signMesh = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 0.85), signMat);
   signMesh.position.set(0, 3.65, 0.3);
-  shopSign = signMesh;
   shopGroup.add(signMesh);
 
   // Lantern on each post
