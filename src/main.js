@@ -1124,7 +1124,7 @@ function spawnZombie() {
   }
   
   const stats = getZombieStatsForRound();
-  const zombie = new Zombie(-15, getRandomInRange(-15, 15), stats.speed, stats.health, stats.damage);
+  const zombie = new Zombie(-60, getRandomInRange(-15, 15), stats.speed, stats.health, stats.damage);
   zombie.findTarget();
   
   zombies.push(zombie);
