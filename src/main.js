@@ -804,6 +804,9 @@ function Building(type, x, z, options = {}) {
     // Remove from buildings array
     const index = buildings.indexOf(this);
     if (index > -1) buildings.splice(index, 1);
+
+    // Update grid rings so the freed cell shows as available again
+    updateGridRings();
   }
 }
 
