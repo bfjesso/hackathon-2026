@@ -360,8 +360,13 @@ const cubeGeometry = new THREE.BoxGeometry( 1, 1, 1 );
 const cubeMaterial = new THREE.MeshBasicMaterial( { color: 0x00ff00, wireframe: true } );
 
 let zombies = [];
+const maxNumOfZombies = 10;
 
 function spawnZombie() {
+  if(zombies.length >= maxNumOfZombies) {
+    return;
+  }
+  
   const zombie = new Zombie(-15, Math.random() * 10 - 5); // Spawn at edge, random Z
 
   zombie.vX = 0.05; // Move along X axis toward player
@@ -380,8 +385,13 @@ function gameLoop() {
     zombies[i].update();
   }
 
+  for(let i = 0; i < buildings.length; i++){
+    buildings[i].update();
+  }
+
   currentTime += renderRate;
   
+  ui.update();
   renderer.render( scene, camera );
 }
 
@@ -583,7 +593,6 @@ window.addEventListener('click', (event) => {
       
       // Deduct money
       money -= ui.selectedBuildingCost;
-      ui.update();
       
       // Place building
       const building = placeBuildingOnGrid(ui.selectedBuilding, gridPos.x, gridPos.z);
@@ -666,6 +675,14 @@ function Building(type, worldX, worldZ, options = {}) {
     powerPlant: 0,
   };
 
+  const defaultEnergyRates = {
+    solarPanel: 2/100, 
+    windTurbine: 1/100,
+    powerPlant: 3/100,
+  }
+
+  this.energyRate = defaultEnergyRates[type];
+
   // Use getSync since models are preloaded
   const model = modelLoader.getSync(type);
   if (model) {
@@ -694,6 +711,10 @@ function Building(type, worldX, worldZ, options = {}) {
     this.mesh.rotation.y = rotation;
     
     scene.add(this.mesh);
+  }
+
+  this.update = function update() {
+    energy += this.energyRate;
   }
 
   this.destroy = function destroy() {
