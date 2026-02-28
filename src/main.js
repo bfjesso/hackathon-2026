@@ -103,6 +103,8 @@ const modelLoader = {
     solarPanel: '/models/painel_solar/scene.gltf',
     windTurbine: '/models/low_poly_wind_turbine/scene.gltf',
     powerPlant: '/models/cooling-_tower/scene.gltf',
+    turret: '/models/turret-low-poly/scene.gltf',
+    missileTurret: '/models/missile_turret_-_wip/scene.gltf',
     map: '/models/the_map/Hackathon1.gltf',
   },
 
@@ -277,6 +279,8 @@ const ui = {
       { key: 'solarPanel', name: 'Solar Panel', cost: 100, hotkey: '1' },
       { key: 'windTurbine', name: 'Wind Turbine', cost: 150, hotkey: '2' },
       { key: 'powerPlant', name: 'Power Plant', cost: 300, hotkey: '3' },
+      { key: 'turret', name: 'Turret', cost: 200, hotkey: '4' },
+      { key: 'missileTurret', name: 'Missile Turret', cost: 400, hotkey: '5' },
     ];
 
     buildingTypes.forEach(building => {
@@ -515,6 +519,8 @@ window.addEventListener("keydown", (e)=>{
     if (e.key === '1') ui.selectBuilding('solarPanel', 100);
     if (e.key === '2') ui.selectBuilding('windTurbine', 150);
     if (e.key === '3') ui.selectBuilding('powerPlant', 300);
+    if (e.key === '4') ui.selectBuilding('turret', 200);
+    if (e.key === '5') ui.selectBuilding('missileTurret', 400);
   }
   
   if (e.key === 'Escape') {
@@ -715,6 +721,7 @@ function Zombie(x, z, speed) {
 
   this.targetBuilding = null;
   this.damage = 0.5;
+  this.health = 100; // Zombie health
   
   // Use getSync since zombie model is preloaded
   this.mesh = modelLoader.getSync('zombie');
@@ -751,6 +758,12 @@ function Zombie(x, z, speed) {
   this.update = function update() {
     if (!this.mesh) return;
     
+    // Check if zombie is dead
+    if (this.health <= 0) {
+      this.destroy();
+      return;
+    }
+    
     this.x += this.vX * this.speed;
     this.z += this.vZ * this.speed;
     this.mesh.position.x = this.x;
@@ -776,8 +789,8 @@ function Zombie(x, z, speed) {
         this.vX = 0;
         this.vZ = 0;
 
-        if(health > 0) {
-          health -= this.damage;
+        if(this.health > 0) {
+          this.health -= this.damage;
         } else { 
           health = 0;
         }
@@ -791,6 +804,9 @@ function Zombie(x, z, speed) {
     if (this.mesh) {
       scene.remove(this.mesh);
     }
+    // Remove from zombies array
+    const index = zombies.indexOf(this);
+    if (index > -1) zombies.splice(index, 1);
   }
 }
 
@@ -820,7 +836,9 @@ function Building(type, x, z, options = {}) {
   const defaultScales = {
     solarPanel: 0.10,
     windTurbine: 2,     
-    powerPlant: 0.3,    
+    powerPlant: 0.3,
+    turret: 1.0,
+    missileTurret: 0.5,
   };
 
   // Manual position corrections for off-center models (in world units, applied after scaling)
@@ -828,6 +846,8 @@ function Building(type, x, z, options = {}) {
     solarPanel: { x: 0, y: 0, z: 0 },  
     windTurbine: { x: 0, y: 0, z: 0 },
     powerPlant: { x: 0, y: 0, z: 0 },
+    turret: { x: 0, y: 0, z: 0 },
+    missileTurret: { x: 0, y: 0, z: 0 },
   };
 
   // Default rotations for models (in radians)
@@ -835,15 +855,48 @@ function Building(type, x, z, options = {}) {
     solarPanel: Math.PI / 4,  // 45 degrees CCW
     windTurbine: 0,
     powerPlant: 0,
+    turret: 0,
+    missileTurret: 0,
   };
 
   const defaultEnergyRates = {
     solarPanel: 0.5, 
     windTurbine: 0.25,
     powerPlant: 1,
+    turret: 0,
+    missileTurret: 0,
   }
 
   this.energyRate = defaultEnergyRates[type];
+
+  // ============================================
+  // Turret Attack Configuration
+  // ============================================
+  
+  const turretConfig = {
+    turret: {
+      damage: 20,
+      fireRate: 200,      // ms between shots
+      range: 15,
+      splashRadius: 0,    // no splash
+      rotationSpeed: 0.15 // radians per frame for smooth rotation
+    },
+    missileTurret: {
+      damage: 50,
+      fireRate: 1000,     // ms between shots (slower)
+      range: 20,
+      splashRadius: 5,    // splash damage radius
+      rotationSpeed: 0.08 // slower rotation for missile turret
+    }
+  };
+
+  // Turret state
+  this.isTurret = (type === 'turret' || type === 'missileTurret');
+  this.turretStats = turretConfig[type] || null;
+  this.targetZombie = null;
+  this.lastFireTime = 0;
+  this.currentRotation = 0;
+  this.targetRotation = 0;
 
   // Use getSync since models are preloaded
   const model = modelLoader.getSync(type);
@@ -917,6 +970,56 @@ function Building(type, x, z, options = {}) {
   this.update = function update() {
     energy += this.energyRate;
 
+    // ============================================
+    // Turret Attack Logic
+    // ============================================
+    if (this.isTurret && this.turretStats) {
+      // Find target if we don't have one or current target is dead
+      if (!this.targetZombie || this.targetZombie.health <= 0) {
+        this.targetZombie = this.findClosestZombie();
+      }
+      
+      // Check if current target is still in range
+      if (this.targetZombie) {
+        const dist = this.getDistanceToZombie(this.targetZombie);
+        if (dist > this.turretStats.range || this.targetZombie.health <= 0) {
+          this.targetZombie = this.findClosestZombie();
+        }
+      }
+      
+      // Rotate towards target
+      if (this.targetZombie && this.mesh) {
+        // Calculate angle to target
+        const dx = this.targetZombie.x - this.x;
+        const dz = this.targetZombie.z - this.z;
+        this.targetRotation = Math.atan2(dx, dz);
+        
+        // Smoothly interpolate rotation
+        let rotationDiff = this.targetRotation - this.currentRotation;
+        
+        // Normalize angle difference to [-PI, PI]
+        while (rotationDiff > Math.PI) rotationDiff -= Math.PI * 2;
+        while (rotationDiff < -Math.PI) rotationDiff += Math.PI * 2;
+        
+        // Interpolate
+        if (Math.abs(rotationDiff) > 0.01) {
+          this.currentRotation += rotationDiff * this.turretStats.rotationSpeed;
+        } else {
+          this.currentRotation = this.targetRotation;
+        }
+        
+        // Apply rotation to mesh
+        this.mesh.rotation.y = this.currentRotation;
+        
+        // Fire at target (regardless of rotation - turret never misses)
+        const now = Date.now();
+        if (now - this.lastFireTime >= this.turretStats.fireRate) {
+          this.fireAtTarget();
+          this.lastFireTime = now;
+        }
+      }
+    }
+
     // Update health bar visibility and scale
     if (this.healthBarGroup) {
       if (this.health < 100) {
@@ -941,6 +1044,63 @@ function Building(type, x, z, options = {}) {
     // Destroy building when health reaches 0
     if (this.health <= 0) {
       this.destroy();
+    }
+  }
+
+  // Find closest zombie within range
+  this.findClosestZombie = function() {
+    let closest = null;
+    let closestDist = Infinity;
+    
+    for (const zombie of zombies) {
+      if (zombie.health <= 0) continue;
+      
+      const dist = this.getDistanceToZombie(zombie);
+      if (dist <= this.turretStats.range && dist < closestDist) {
+        closestDist = dist;
+        closest = zombie;
+      }
+    }
+    
+    return closest;
+  }
+
+  // Get distance to a zombie
+  this.getDistanceToZombie = function(zombie) {
+    const dx = zombie.x - this.x;
+    const dz = zombie.z - this.z;
+    return Math.sqrt(dx * dx + dz * dz);
+  }
+
+  // Fire at the current target
+  this.fireAtTarget = function() {
+    if (!this.targetZombie) return;
+    
+    // Apply damage to target
+    this.targetZombie.health -= this.turretStats.damage;
+    
+    // Splash damage for missile turret
+    if (this.turretStats.splashRadius > 0) {
+      for (const zombie of zombies) {
+        if (zombie === this.targetZombie) continue;
+        if (zombie.health <= 0) continue;
+        
+        // Distance from target zombie to other zombies
+        const dx = zombie.x - this.targetZombie.x;
+        const dz = zombie.z - this.targetZombie.z;
+        const dist = Math.sqrt(dx * dx + dz * dz);
+        
+        if (dist <= this.turretStats.splashRadius) {
+          // Splash damage decreases with distance
+          const splashDamage = this.turretStats.damage * (1 - dist / this.turretStats.splashRadius) * 0.5;
+          zombie.health -= splashDamage;
+        }
+      }
+    }
+    
+    // Check if zombie died
+    if (this.targetZombie.health <= 0) {
+      this.targetZombie = null;
     }
   }
 
@@ -1007,7 +1167,7 @@ async function initGame() {
   ui.init();
   
   // Preload all models for instant spawning during gameplay
-  await modelLoader.preload(['zombie', 'solarPanel', 'windTurbine', 'powerPlant', 'map']);
+  await modelLoader.preload(['zombie', 'solarPanel', 'windTurbine', 'powerPlant', 'turret', 'missileTurret', 'map']);
   
   // Load and add the map to the scene
   const mapModel = modelLoader.getSync('map');
