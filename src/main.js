@@ -10,7 +10,7 @@ function getRandomInRange(min, max) {
 // Game State
 // ============================================
 
-let energy = 500000000;
+let energy = 500;
 let playerHealth = 100;
 let buildMode = false;
 let powerUpMode = false;
