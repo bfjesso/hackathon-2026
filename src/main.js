@@ -7,6 +7,34 @@ function getRandomInRange(min, max) {
 }
 
 // ============================================
+// Audio System
+// ============================================
+
+const audioCache = {};
+
+function loadSound(name, path) {
+  const audio = new Audio(path);
+  audio.preload = 'auto';
+  audioCache[name] = audio;
+}
+
+function playSound(name, volume = 1.0) {
+  const src = audioCache[name];
+  if (!src) return;
+  // Clone so overlapping plays work
+  const sound = src.cloneNode();
+  sound.volume = volume;
+  sound.play().catch(() => {});
+}
+
+// Preload all game sounds
+loadSound('build', '/sound/build.mp3');
+loadSound('explosion', '/sound/explosion.mp3');
+loadSound('gunshot', '/sound/gun-shot.mp3');
+loadSound('newRound', '/sound/new-round.mp3');
+loadSound('splat', '/sound/splat.mp3');
+
+// ============================================
 // Game State
 // ============================================
 
@@ -861,6 +889,7 @@ function getZombieStatsForRound() {
  * Start a new round
  */
 function startRound() {
+  playSound('newRound');
   currentRound++;
   zombiesKilledThisRound = 0;
   totalZombiesSpawnedThisRound = 0;
@@ -1425,6 +1454,7 @@ window.addEventListener('click', (event) => {
       
       // Place building
       const building = placeBuildingOnGrid(ui.selectedBuilding, gridPos.x, gridPos.z);
+      playSound('build');
       console.log(`Placed ${ui.selectedBuilding} at grid (${gridPos.x}, ${gridPos.z})`);
       
       // Update grid rings to show new occupied cell
@@ -1483,6 +1513,7 @@ function Zombie(x, z, speed, health = 100, damage = 0.5) {
     
     // Check if zombie is dead
     if (this.health <= 0) {
+      playSound('splat', 0.5);
       this.destroy();
       return;
     }
@@ -1825,6 +1856,13 @@ function Building(type, x, z, options = {}) {
     // Create tracer effect
     const tracerType = this.type === 'missileTurret' ? 'missile' : 'bullet';
     createTracer(this.x, this.z, this.targetZombie.x, this.targetZombie.z, tracerType);
+    
+    // Play turret sound
+    if (this.type === 'missileTurret') {
+      playSound('explosion', 0.4);
+    } else {
+      playSound('gunshot', 0.3);
+    }
     
     // Apply damage to target
     this.targetZombie.health -= this.turretStats.damage;
