@@ -462,6 +462,7 @@ const ui = {
   upgradeMenu: null,
   activeBuffBar: null,
   selectedBuilding: null,
+  destroyMode: false,
 
 
   init() {
@@ -616,6 +617,37 @@ const ui = {
       btn.addEventListener('click', () => this.selectBuilding(building.key, building.cost));
       this.buildMenu.appendChild(btn);
     });
+
+    // Destroy button
+    const destroyBtn = document.createElement('button');
+    destroyBtn.id = 'destroy-btn';
+    destroyBtn.innerHTML = `<span style="opacity:0.5;margin-right:6px;">X</span> Destroy`;
+    destroyBtn.style.cssText = `
+      display: block;
+      width: 100%;
+      padding: 8px 12px;
+      margin-top: 8px;
+      background: rgba(255, 60, 60, 0.15);
+      border: 1px solid rgba(255, 60, 60, 0.3);
+      color: #ccc;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      text-align: left;
+      transition: background 0.15s;
+    `;
+    destroyBtn.addEventListener('mouseenter', () => {
+      destroyBtn.style.background = 'rgba(255, 60, 60, 0.35)';
+      destroyBtn.style.color = '#fff';
+    });
+    destroyBtn.addEventListener('mouseleave', () => {
+      destroyBtn.style.background = this.destroyMode ? 'rgba(255, 60, 60, 0.35)' : 'rgba(255, 60, 60, 0.15)';
+      destroyBtn.style.color = this.destroyMode ? '#fff' : '#ccc';
+      destroyBtn.style.borderColor = this.destroyMode ? '#ff3c3c' : 'rgba(255, 60, 60, 0.3)';
+    });
+    destroyBtn.addEventListener('click', () => this.toggleDestroyMode());
+    this.buildMenu.appendChild(destroyBtn);
 
     this.container.appendChild(this.buildMenu);
 
@@ -930,8 +962,11 @@ const ui = {
   },
 
   selectBuilding(type, cost) {
+    this.destroyMode = false;
     this.selectedBuilding = type;
     this.selectedBuildingCost = cost;
+    const destroyBtn = document.getElementById('destroy-btn');
+    if (destroyBtn) { destroyBtn.style.background = 'rgba(255, 60, 60, 0.15)'; destroyBtn.style.color = '#ccc'; destroyBtn.style.borderColor = 'rgba(255, 60, 60, 0.3)'; }
     // Update button styles
     this.buildMenu.querySelectorAll('button').forEach(btn => {
       btn.style.borderColor = btn.dataset.buildingType === type ? '#ffd700' : 'rgba(46, 139, 87, 0.3)';
@@ -942,9 +977,28 @@ const ui = {
   cancelSelection() {
     this.selectedBuilding = null;
     this.selectedBuildingCost = 0;
+    this.destroyMode = false;
+    const destroyBtn = document.getElementById('destroy-btn');
+    if (destroyBtn) { destroyBtn.style.background = 'rgba(255, 60, 60, 0.15)'; destroyBtn.style.color = '#ccc'; destroyBtn.style.borderColor = 'rgba(255, 60, 60, 0.3)'; }
     this.buildMenu.querySelectorAll('button').forEach(btn => {
       btn.style.borderColor = 'rgba(46, 139, 87, 0.3)';
     });
+  },
+
+  toggleDestroyMode() {
+    this.destroyMode = !this.destroyMode;
+    this.selectedBuilding = null;
+    this.selectedBuildingCost = 0;
+    // Deselect all building buttons
+    this.buildMenu.querySelectorAll('button[data-building-type]').forEach(btn => {
+      btn.style.borderColor = 'rgba(78, 205, 196, 0.3)';
+    });
+    const destroyBtn = document.getElementById('destroy-btn');
+    if (destroyBtn) {
+      destroyBtn.style.background = this.destroyMode ? 'rgba(255, 60, 60, 0.45)' : 'rgba(255, 60, 60, 0.15)';
+      destroyBtn.style.color = this.destroyMode ? '#fff' : '#ccc';
+      destroyBtn.style.borderColor = this.destroyMode ? '#ff3c3c' : 'rgba(255, 60, 60, 0.3)';
+    }
   },
 
   toggleBuildMode() {
@@ -1555,11 +1609,44 @@ window.addEventListener("keydown", (e)=>{
   
   // Building hotkeys (only work in build mode)
   if (buildMode) {
-    if (e.key === '1') ui.selectBuilding('solarPanel', 100);
-    if (e.key === '2') ui.selectBuilding('windTurbine', 200);
-    if (e.key === '3') ui.selectBuilding('powerPlant', 600);
-    if (e.key === '4') ui.selectBuilding('turret', 400);
-    if (e.key === '5') ui.selectBuilding('missileTurret', 600);
+    const buildHotkeys = {
+      '1': { type: 'solarPanel',    cost: 100 },
+      '2': { type: 'windTurbine',   cost: 200 },
+      '3': { type: 'powerPlant',    cost: 600 },
+      '4': { type: 'turret',        cost: 400 },
+      '5': { type: 'missileTurret', cost: 600 },
+    };
+
+    if (buildHotkeys[e.key]) {
+      const { type, cost } = buildHotkeys[e.key];
+      ui.selectBuilding(type, cost);
+      // Instantly place at hovered cell
+      raycaster.setFromCamera(mouse, camera);
+      const hits = raycaster.intersectObject(ground);
+      if (hits.length > 0) {
+        const gridPos = worldToGrid(hits[0].point.x, hits[0].point.z);
+        if (isCellEmpty(gridPos.x, gridPos.z) && energy >= cost) {
+          energy -= cost;
+          placeBuildingOnGrid(type, gridPos.x, gridPos.z);
+          SoundManager.play('build');
+          updateGridRings();
+        }
+      }
+    }
+
+    if (e.key === 'x' || e.key === 'X') {
+      ui.toggleDestroyMode();
+      // Instantly destroy hovered cell
+      raycaster.setFromCamera(mouse, camera);
+      const hits = raycaster.intersectObject(ground);
+      if (hits.length > 0) {
+        const gridPos = worldToGrid(hits[0].point.x, hits[0].point.z);
+        if (isValidGridPos(gridPos.x, gridPos.z) && !isCellEmpty(gridPos.x, gridPos.z)) {
+          grid[gridPos.x][gridPos.z].destroy();
+          SoundManager.play('explosion');
+        }
+      }
+    }
   }
 
   // Power-up hotkeys (only work in power-up mode)
@@ -1718,7 +1805,7 @@ scene.add(hoverIndicator);
 
 // Function to update hover indicator (called every frame)
 function updateHoverIndicator() {
-  if (!buildMode || !ui.selectedBuilding) {
+  if (!buildMode || (!ui.selectedBuilding && !ui.destroyMode)) {
     hoverIndicator.visible = false;
     return;
   }
@@ -1735,13 +1822,24 @@ function updateHoverIndicator() {
       hoverIndicator.position.set(worldPos.x, 0.05, worldPos.z);
       hoverIndicator.visible = true;
       
-      // Color based on can place or not
-      if (isCellEmpty(gridPos.x, gridPos.z) && energy >= ui.selectedBuildingCost) {
-        hoverMaterial.color.setHex(0x00ff00); // Green = can place
-        hoverMaterial.emissive.setHex(0x00ff00);
+      if (ui.destroyMode) {
+        // Red if occupied (can destroy), grey if empty
+        if (!isCellEmpty(gridPos.x, gridPos.z)) {
+          hoverMaterial.color.setHex(0xff2200);
+          hoverMaterial.emissive.setHex(0xff2200);
+        } else {
+          hoverMaterial.color.setHex(0x666666);
+          hoverMaterial.emissive.setHex(0x000000);
+        }
       } else {
-        hoverMaterial.color.setHex(0xff0000); // Red = can't place
-        hoverMaterial.emissive.setHex(0xff0000);
+        // Green = can place, red = can't
+        if (isCellEmpty(gridPos.x, gridPos.z) && energy >= ui.selectedBuildingCost) {
+          hoverMaterial.color.setHex(0x00ff00);
+          hoverMaterial.emissive.setHex(0x00ff00);
+        } else {
+          hoverMaterial.color.setHex(0xff0000);
+          hoverMaterial.emissive.setHex(0xff0000);
+        }
       }
     } else {
       hoverIndicator.visible = false;
@@ -1757,9 +1855,9 @@ window.addEventListener('mousemove', (event) => {
   mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
 });
 
-// Click handler for placing buildings
+// Click handler for placing/destroying buildings
 window.addEventListener('click', (event) => {
-  if (!buildMode || !ui.selectedBuilding) return;
+  if (!buildMode || (!ui.selectedBuilding && !ui.destroyMode)) return;
 
   mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
   mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
@@ -1770,20 +1868,25 @@ window.addEventListener('click', (event) => {
   if (intersects.length > 0) {
     const point = intersects[0].point;
     const gridPos = worldToGrid(point.x, point.z);
-    
-    if (isCellEmpty(gridPos.x, gridPos.z) && energy >= ui.selectedBuildingCost) {
-      const worldPos = gridToWorld(gridPos.x, gridPos.z);
-      
-      // Deduct energy
-      energy -= ui.selectedBuildingCost;
-      
-      // Place building
-      const building = placeBuildingOnGrid(ui.selectedBuilding, gridPos.x, gridPos.z);
-      SoundManager.play('build');
-      console.log(`Placed ${ui.selectedBuilding} at grid (${gridPos.x}, ${gridPos.z})`);
-      
-      // Update grid rings to show new occupied cell
-      updateGridRings();
+
+    if (ui.destroyMode) {
+      // Destroy the building in this cell
+      if (isValidGridPos(gridPos.x, gridPos.z) && !isCellEmpty(gridPos.x, gridPos.z)) {
+        const building = grid[gridPos.x][gridPos.z];
+        building.destroy();
+        SoundManager.play('explosion');
+      }
+    } else {
+      if (isCellEmpty(gridPos.x, gridPos.z) && energy >= ui.selectedBuildingCost) {
+        // Deduct energy
+        energy -= ui.selectedBuildingCost;
+        // Place building
+        placeBuildingOnGrid(ui.selectedBuilding, gridPos.x, gridPos.z);
+        SoundManager.play('build');
+        console.log(`Placed ${ui.selectedBuilding} at grid (${gridPos.x}, ${gridPos.z})`);
+        // Update grid rings to show new occupied cell
+        updateGridRings();
+      }
     }
   }
 });
