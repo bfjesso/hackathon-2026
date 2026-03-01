@@ -175,6 +175,40 @@ body {
   border-color: #4ecdc4;
   color: #fff;
 }
+
+/* Spawner tool — red tint */
+.editor-spawner-btn:hover {
+  background: rgba(204, 34, 34, 0.3);
+  border-color: rgba(204, 34, 34, 0.5);
+}
+.editor-spawner-btn.active {
+  background: rgba(204, 34, 34, 0.45);
+  border-color: #cc2222;
+  color: #ff6666;
+}
+
+/* Target tool — gold/blue tint */
+.editor-target-btn:hover {
+  background: rgba(34, 170, 221, 0.3);
+  border-color: rgba(34, 170, 221, 0.5);
+}
+.editor-target-btn.active {
+  background: rgba(34, 170, 221, 0.45);
+  border-color: #22aadd;
+  color: #66ddff;
+}
+
+/* Placeable tool — cyan/teal tint */
+.editor-placeable-btn:hover {
+  background: rgba(34, 204, 170, 0.3);
+  border-color: rgba(34, 204, 170, 0.5);
+}
+.editor-placeable-btn.active {
+  background: rgba(34, 204, 170, 0.45);
+  border-color: #22ccaa;
+  color: #66ffdd;
+}
+
 .editor-back-btn {
   background: rgba(255, 80, 80, 0.15);
   border-color: rgba(255, 80, 80, 0.3);
@@ -185,21 +219,22 @@ body {
 }
 
 .editor-sm-btn {
-  width: 26px;
+  min-width: 26px;
   height: 26px;
-  font-size: 16px;
+  font-size: 11px;
   line-height: 1;
-  padding: 0;
-  background: rgba(78, 205, 196, 0.15);
-  border: 1px solid rgba(78, 205, 196, 0.3);
+  padding: 0 6px;
+  background: rgba(34, 204, 170, 0.15);
+  border: 1px solid rgba(34, 204, 170, 0.3);
   color: #ccc;
   border-radius: 4px;
   cursor: pointer;
   font-family: 'Segoe UI', Arial, sans-serif;
   transition: background 0.12s;
+  white-space: nowrap;
 }
 .editor-sm-btn:hover {
-  background: rgba(78, 205, 196, 0.35);
+  background: rgba(34, 204, 170, 0.35);
   color: #fff;
 }
 

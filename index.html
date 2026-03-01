@@ -26,17 +26,24 @@
       <div id="editor-toolbar">
         <button class="editor-btn" id="editor-grass-btn" title="Add/Remove Ground (G)">🟩 Grass</button>
         <button class="editor-btn active" id="editor-draw-btn" title="Draw Path (Q)">🖌️ Path</button>
-        <button class="editor-btn" id="editor-erase-btn" title="Erase Path (E)">🧹 Erase</button>
+        <button class="editor-btn" id="editor-erase-btn" title="Erase (E)">🧹 Erase</button>
         <div class="editor-separator"></div>
         <label class="editor-label">Color:</label>
         <input type="color" id="editor-path-color" value="#cc8844" title="Path Color">
+        <div class="editor-separator"></div>
+        <button class="editor-btn editor-spawner-btn" id="editor-spawner-btn" title="Place Zombie Spawner (Z)">💀 Spawner</button>
+        <button class="editor-btn editor-target-btn" id="editor-target-btn" title="Place Energy Target (T)">⚡ Target</button>
+        <div class="editor-separator"></div>
+        <button class="editor-btn editor-placeable-btn" id="editor-placeable-btn" title="Mark Buildable Tiles (R)">🔧 Placeable</button>
+        <button class="editor-sm-btn" id="editor-all-placeable" title="Make all ground tiles placeable">All</button>
+        <button class="editor-sm-btn" id="editor-none-placeable" title="Remove all placeable markings">None</button>
         <div class="editor-separator"></div>
         <button class="editor-btn" id="editor-clear-btn" title="Clear All Paths">🗑️ Clear</button>
         <button class="editor-btn editor-back-btn" id="editor-back-btn">← Back to Menu</button>
       </div>
       <!-- Bottom hint bar -->
       <div id="editor-hint">
-        Grass: click to expand ground · Path: click/drag to draw · WASD to move · Arrow keys to rotate/tilt · Scroll to zoom
+        Grass: expand ground · Path: draw routes · Spawner/Target: click to place · Placeable: mark buildable tiles · WASD + Arrows + Scroll
       </div>
     </div>
 

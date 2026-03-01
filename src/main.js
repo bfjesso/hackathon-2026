@@ -3042,12 +3042,19 @@ const levelEditor = (() => {
   let active = false;
   const cellSize = 3; // Same cell size as the game
   let pathColor = '#cc8844';
-  let tool = 'draw'; // 'draw' | 'erase' | 'grass'
+  let tool = 'draw'; // 'draw' | 'erase' | 'grass' | 'spawner' | 'target' | 'placeable'
 
   // Ground cells: Set of "x,z" keys — freeform shape
   const groundCells = new Map(); // "x,z" -> Mesh
   // Path data: Map of "x,z" -> { color, mesh }
   const pathCells = new Map();
+
+  // Spawner cell: only ONE allowed – { gx, gz, mesh }
+  let spawnerCell = null;
+  // Target cell: only ONE allowed – { gx, gz, mesh }
+  let targetCell = null;
+  // Placeable cells: Map of "x,z" -> Mesh (building-allowed zones)
+  const placeableCells = new Map();
 
   // Invisible raycast plane (large, sits at y=0 so we can click anywhere)
   let raycastPlane = null;
@@ -3069,6 +3076,7 @@ const levelEditor = (() => {
   const editorRaycaster = new THREE.Raycaster();
   const editorMouse = new THREE.Vector2();
   let isPainting = false;
+  let dragAction = null; // 'add' | 'remove' — locked on mousedown for toggling tools
 
   // --- Coordinate helpers ---
   // Grid coords are arbitrary integers (can be negative)
@@ -3121,6 +3129,10 @@ const levelEditor = (() => {
 
     // Also remove path on this cell if any
     erasePathCell(gx, gz);
+    // Remove spawner/target/placeable if on this cell
+    if (spawnerCell && spawnerCell.gx === gx && spawnerCell.gz === gz) removeSpawner();
+    if (targetCell && targetCell.gx === gx && targetCell.gz === gz) removeTarget();
+    removePlaceable(gx, gz);
 
     rebuildOutlines();
   }
@@ -3230,6 +3242,140 @@ const levelEditor = (() => {
     pathCells.clear();
   }
 
+  // --- Spawner management (only ONE allowed) ---
+  function setSpawner(gx, gz) {
+    if (!hasGround(gx, gz)) return;
+    // If clicking same cell, remove it
+    if (spawnerCell && spawnerCell.gx === gx && spawnerCell.gz === gz) {
+      removeSpawner();
+      return;
+    }
+    // Remove old spawner if any
+    removeSpawner();
+    const geo = new THREE.PlaneGeometry(cellSize * 0.92, cellSize * 0.92);
+    const mat = new THREE.MeshStandardMaterial({ color: 0xcc2222, roughness: 0.5, transparent: true, opacity: 0.75 });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.rotation.x = -Math.PI / 2;
+    const wp = gridToWorld(gx, gz);
+    mesh.position.set(wp.x, 0.04, wp.z);
+    scene.add(mesh);
+    // Add a skull-like icon: small darker circle
+    const iconGeo = new THREE.CircleGeometry(cellSize * 0.2, 16);
+    const iconMat = new THREE.MeshStandardMaterial({ color: 0x660000, roughness: 0.3 });
+    const icon = new THREE.Mesh(iconGeo, iconMat);
+    icon.rotation.x = -Math.PI / 2;
+    icon.position.set(wp.x, 0.06, wp.z);
+    scene.add(icon);
+    spawnerCell = { gx, gz, mesh, icon };
+  }
+
+  function removeSpawner() {
+    if (!spawnerCell) return;
+    scene.remove(spawnerCell.mesh);
+    spawnerCell.mesh.geometry.dispose();
+    spawnerCell.mesh.material.dispose();
+    if (spawnerCell.icon) {
+      scene.remove(spawnerCell.icon);
+      spawnerCell.icon.geometry.dispose();
+      spawnerCell.icon.material.dispose();
+    }
+    spawnerCell = null;
+  }
+
+  // --- Target management (only ONE allowed) ---
+  function setTarget(gx, gz) {
+    if (!hasGround(gx, gz)) return;
+    if (targetCell && targetCell.gx === gx && targetCell.gz === gz) {
+      removeTarget();
+      return;
+    }
+    removeTarget();
+    const geo = new THREE.PlaneGeometry(cellSize * 0.92, cellSize * 0.92);
+    const mat = new THREE.MeshStandardMaterial({ color: 0x22aadd, roughness: 0.5, transparent: true, opacity: 0.75 });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.rotation.x = -Math.PI / 2;
+    const wp = gridToWorld(gx, gz);
+    mesh.position.set(wp.x, 0.04, wp.z);
+    scene.add(mesh);
+    // Lightning bolt icon: small bright circle
+    const iconGeo = new THREE.CircleGeometry(cellSize * 0.2, 16);
+    const iconMat = new THREE.MeshStandardMaterial({ color: 0xffdd00, roughness: 0.3, emissive: 0xffdd00, emissiveIntensity: 0.4 });
+    const icon = new THREE.Mesh(iconGeo, iconMat);
+    icon.rotation.x = -Math.PI / 2;
+    icon.position.set(wp.x, 0.06, wp.z);
+    scene.add(icon);
+    targetCell = { gx, gz, mesh, icon };
+  }
+
+  function removeTarget() {
+    if (!targetCell) return;
+    scene.remove(targetCell.mesh);
+    targetCell.mesh.geometry.dispose();
+    targetCell.mesh.material.dispose();
+    if (targetCell.icon) {
+      scene.remove(targetCell.icon);
+      targetCell.icon.geometry.dispose();
+      targetCell.icon.material.dispose();
+    }
+    targetCell = null;
+  }
+
+  // --- Placeable cell management ---
+  function togglePlaceable(gx, gz) {
+    if (!hasGround(gx, gz)) return;
+    const key = cellKey(gx, gz);
+    if (placeableCells.has(key)) {
+      removePlaceable(gx, gz);
+    } else {
+      addPlaceable(gx, gz);
+    }
+  }
+
+  function addPlaceable(gx, gz) {
+    const key = cellKey(gx, gz);
+    if (placeableCells.has(key)) return;
+    if (!hasGround(gx, gz)) return;
+    const geo = new THREE.PlaneGeometry(cellSize * 0.92, cellSize * 0.92);
+    const mat = new THREE.MeshStandardMaterial({
+      color: 0x22ccaa,
+      roughness: 0.6,
+      transparent: true,
+      opacity: 0.45,
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.rotation.x = -Math.PI / 2;
+    const wp = gridToWorld(gx, gz);
+    mesh.position.set(wp.x, 0.03, wp.z);
+    scene.add(mesh);
+    placeableCells.set(key, mesh);
+  }
+
+  function removePlaceable(gx, gz) {
+    const key = cellKey(gx, gz);
+    const mesh = placeableCells.get(key);
+    if (!mesh) return;
+    scene.remove(mesh);
+    mesh.geometry.dispose();
+    mesh.material.dispose();
+    placeableCells.delete(key);
+  }
+
+  function makeAllPlaceable() {
+    for (const [key] of groundCells) {
+      const [gx, gz] = key.split(',').map(Number);
+      addPlaceable(gx, gz);
+    }
+  }
+
+  function makeNonePlaceable() {
+    for (const [key, mesh] of placeableCells) {
+      scene.remove(mesh);
+      mesh.geometry.dispose();
+      mesh.material.dispose();
+    }
+    placeableCells.clear();
+  }
+
   // --- Build initial ground (default 10x10 rectangle) ---
   function buildInitialGround() {
     for (let x = 0; x < 10; x++) {
@@ -3242,7 +3388,7 @@ const levelEditor = (() => {
   }
 
   // --- Paint/interact at current mouse position ---
-  function interactAtMouse() {
+  function interactAtMouse(isDrag) {
     if (!raycastPlane) return;
     editorRaycaster.setFromCamera(editorMouse, camera);
     const hits = editorRaycaster.intersectObject(raycastPlane);
@@ -3251,9 +3397,11 @@ const levelEditor = (() => {
     const gc = worldToGrid(pt.x, pt.z);
 
     if (tool === 'grass') {
-      // In grass mode: click on empty space adjacent to existing ground to add
-      // Click on existing ground to remove (unless it has path — remove path first)
-      if (hasGround(gc.x, gc.z)) {
+      // On first click, decide add or remove and lock for the drag
+      if (!isDrag) {
+        dragAction = hasGround(gc.x, gc.z) ? 'remove' : 'add';
+      }
+      if (dragAction === 'remove') {
         removeGroundCell(gc.x, gc.z);
       } else if (hasAdjacentGround(gc.x, gc.z) || groundCells.size === 0) {
         addGroundCell(gc.x, gc.z);
@@ -3264,6 +3412,21 @@ const levelEditor = (() => {
       }
     } else if (tool === 'erase') {
       erasePathCell(gc.x, gc.z);
+    } else if (tool === 'spawner') {
+      if (!isDrag) setSpawner(gc.x, gc.z);
+    } else if (tool === 'target') {
+      if (!isDrag) setTarget(gc.x, gc.z);
+    } else if (tool === 'placeable') {
+      // On first click, decide add or remove and lock for the drag
+      if (!isDrag) {
+        const key = cellKey(gc.x, gc.z);
+        dragAction = placeableCells.has(key) ? 'remove' : 'add';
+      }
+      if (dragAction === 'remove') {
+        removePlaceable(gc.x, gc.z);
+      } else {
+        addPlaceable(gc.x, gc.z);
+      }
     }
   }
 
@@ -3306,9 +3469,10 @@ const levelEditor = (() => {
 
     if (e.button === 0) {
       isPainting = true;
+      dragAction = null;
       editorMouse.x = (e.clientX / window.innerWidth) * 2 - 1;
       editorMouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
-      interactAtMouse();
+      interactAtMouse(false);
     }
   }
 
@@ -3316,14 +3480,17 @@ const levelEditor = (() => {
     editorMouse.x = (e.clientX / window.innerWidth) * 2 - 1;
     editorMouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
 
-    if (isPainting && tool !== 'grass') {
-      // Drag-painting for path draw/erase only (grass is click-per-cell)
-      interactAtMouse();
+    if (isPainting) {
+      // Hold-click drag works for all tools
+      interactAtMouse(true);
     }
   }
 
   function onMouseUp(e) {
-    if (e.button === 0) isPainting = false;
+    if (e.button === 0) {
+      isPainting = false;
+      dragAction = null;
+    }
   }
 
   function onWheel(e) {
@@ -3340,6 +3507,9 @@ const levelEditor = (() => {
       if (k === 'g') setTool('grass');
       if (k === 'q') setTool('draw');
       if (k === 'e') setTool('erase');
+      if (k === 'z') setTool('spawner');
+      if (k === 't') setTool('target');
+      if (k === 'r') setTool('placeable');
     }
   }
 
@@ -3358,6 +3528,9 @@ const levelEditor = (() => {
     document.getElementById('editor-grass-btn')?.classList.toggle('active', t === 'grass');
     document.getElementById('editor-draw-btn')?.classList.toggle('active', t === 'draw');
     document.getElementById('editor-erase-btn')?.classList.toggle('active', t === 'erase');
+    document.getElementById('editor-spawner-btn')?.classList.toggle('active', t === 'spawner');
+    document.getElementById('editor-target-btn')?.classList.toggle('active', t === 'target');
+    document.getElementById('editor-placeable-btn')?.classList.toggle('active', t === 'placeable');
   }
 
   // --- Editor render loop ---
@@ -3409,6 +3582,13 @@ const levelEditor = (() => {
 
     // Remove paths
     clearAllPaths();
+
+    // Remove spawner & target
+    removeSpawner();
+    removeTarget();
+
+    // Remove placeable cells
+    makeNonePlaceable();
 
     // Remove outlines
     if (outlineGroup) {
@@ -3481,6 +3661,11 @@ const levelEditor = (() => {
     document.getElementById('editor-grass-btn').onclick = () => setTool('grass');
     document.getElementById('editor-draw-btn').onclick = () => setTool('draw');
     document.getElementById('editor-erase-btn').onclick = () => setTool('erase');
+    document.getElementById('editor-spawner-btn').onclick = () => setTool('spawner');
+    document.getElementById('editor-target-btn').onclick = () => setTool('target');
+    document.getElementById('editor-placeable-btn').onclick = () => setTool('placeable');
+    document.getElementById('editor-all-placeable').onclick = () => makeAllPlaceable();
+    document.getElementById('editor-none-placeable').onclick = () => makeNonePlaceable();
     document.getElementById('editor-path-color').oninput = (e) => { pathColor = e.target.value; };
     document.getElementById('editor-clear-btn').onclick = () => clearAllPaths();
     document.getElementById('editor-back-btn').onclick = () => stop();
