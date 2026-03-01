@@ -580,11 +580,11 @@ const ui = {
     this.buildMenu.appendChild(menuTitle);
 
     const buildingTypes = [
-      { key: 'solarPanel', name: 'Solar Panel', cost: 100, hotkey: '1', desc: 'Generates energy from sunlight' },
-      { key: 'windTurbine', name: 'Wind Turbine', cost: 200, hotkey: '2', desc: 'Generates energy from wind' },
-      { key: 'powerPlant', name: 'Power Plant', cost: 600, hotkey: '3', desc: 'High output energy generator' },
-      { key: 'turret', name: 'Turret', cost: 400, hotkey: '4', desc: 'Shoots nearby zombies' },
-      { key: 'missileTurret', name: 'Missile Turret', cost: 600, hotkey: '5', desc: 'Splash damage missiles' },
+      { key: 'windTurbine',   name: 'Wind Turbine',   cost: 100,  hotkey: '1', desc: 'Generates energy from wind' },
+      { key: 'solarPanel',   name: 'Solar Panel',    cost: 250,  hotkey: '2', desc: 'Generates energy from sunlight' },
+      { key: 'powerPlant',   name: 'Power Plant',    cost: 500,  hotkey: '3', desc: 'High output energy generator' },
+      { key: 'turret',       name: 'Turret',         cost: 400,  hotkey: '4', desc: 'Shoots nearby zombies' },
+      { key: 'missileTurret',name: 'Missile Turret', cost: 800,  hotkey: '5', desc: 'Splash damage missiles' },
     ];
 
     buildingTypes.forEach(building => {
@@ -809,8 +809,8 @@ const ui = {
     this.upgradeMenu.appendChild(this.upgradeTooltip);
 
     const upgradeTypes = [
-      { key: 'solarPanel',    name: 'Solar Panel',    hotkey: '1', desc: 'Increases energy generation of all Solar Panels' },
-      { key: 'windTurbine',  name: 'Wind Turbine',   hotkey: '2', desc: 'Increases energy generation of all Wind Turbines' },
+      { key: 'windTurbine',  name: 'Wind Turbine',   hotkey: '1', desc: 'Increases energy generation of all Wind Turbines' },
+      { key: 'solarPanel',   name: 'Solar Panel',    hotkey: '2', desc: 'Increases energy generation of all Solar Panels' },
       { key: 'powerPlant',   name: 'Power Plant',    hotkey: '3', desc: 'Increases energy generation of all Power Plants' },
       { key: 'turret',       name: 'Turret',         hotkey: '4', desc: 'Increases damage of all Turrets' },
       { key: 'missileTurret',name: 'Missile Turret', hotkey: '5', desc: 'Increases damage of all Missile Turrets' },
@@ -880,8 +880,8 @@ const ui = {
 
   refreshUpgradeButtons() {
     const upgradeTypes = [
-      { key: 'solarPanel',     name: 'Solar Panel',    hotkey: '1' },
-      { key: 'windTurbine',    name: 'Wind Turbine',   hotkey: '2' },
+      { key: 'windTurbine',    name: 'Wind Turbine',   hotkey: '1' },
+      { key: 'solarPanel',     name: 'Solar Panel',    hotkey: '2' },
       { key: 'powerPlant',     name: 'Power Plant',    hotkey: '3' },
       { key: 'turret',         name: 'Turret',         hotkey: '4' },
       { key: 'missileTurret',  name: 'Missile Turret', hotkey: '5' },
@@ -1624,8 +1624,8 @@ window.addEventListener("keydown", (e)=>{
   // Building hotkeys (only work in build mode)
   if (buildMode) {
     const buildHotkeys = {
-      '1': { type: 'solarPanel',    cost: 100 },
-      '2': { type: 'windTurbine',   cost: 200 },
+      '1': { type: 'windTurbine',   cost: 100 },
+      '2': { type: 'solarPanel',    cost: 250 },
       '3': { type: 'powerPlant',    cost: 600 },
       '4': { type: 'turret',        cost: 400 },
       '5': { type: 'missileTurret', cost: 600 },
@@ -1672,8 +1672,8 @@ window.addEventListener("keydown", (e)=>{
 
   // Upgrade hotkeys (only work in upgrade mode)
   if (upgradeMode) {
-    if (e.key === '1') ui.buyUpgrade('solarPanel');
-    if (e.key === '2') ui.buyUpgrade('windTurbine');
+    if (e.key === '1') ui.buyUpgrade('windTurbine');
+    if (e.key === '2') ui.buyUpgrade('solarPanel');
     if (e.key === '3') ui.buyUpgrade('powerPlant');
     if (e.key === '4') ui.buyUpgrade('turret');
     if (e.key === '5') ui.buyUpgrade('missileTurret');
