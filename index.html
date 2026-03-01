@@ -11,12 +11,33 @@
       <div class="menu-title">Power Defense</div>
       <div class="menu-subtitle">Survive with clean energy</div>
       <button class="menu-btn" id="new-game-btn">New Game</button>
+      <button class="menu-btn" id="level-creator-btn" style="margin-top: 16px;">Level Creator</button>
     </div>
 
     <!-- Cutscene Overlay -->
     <div id="cutscene-overlay" style="display:none;">
       <div class="cutscene-text" id="cutscene-text"></div>
       <div class="skip-hint">Press Space to skip</div>
+    </div>
+
+    <!-- Level Editor UI (hidden by default) -->
+    <div id="level-editor-ui" style="display:none;">
+      <!-- Top toolbar -->
+      <div id="editor-toolbar">
+        <button class="editor-btn" id="editor-grass-btn" title="Add/Remove Ground (G)">🟩 Grass</button>
+        <button class="editor-btn active" id="editor-draw-btn" title="Draw Path (Q)">🖌️ Path</button>
+        <button class="editor-btn" id="editor-erase-btn" title="Erase Path (E)">🧹 Erase</button>
+        <div class="editor-separator"></div>
+        <label class="editor-label">Color:</label>
+        <input type="color" id="editor-path-color" value="#cc8844" title="Path Color">
+        <div class="editor-separator"></div>
+        <button class="editor-btn" id="editor-clear-btn" title="Clear All Paths">🗑️ Clear</button>
+        <button class="editor-btn editor-back-btn" id="editor-back-btn">← Back to Menu</button>
+      </div>
+      <!-- Bottom hint bar -->
+      <div id="editor-hint">
+        Grass: click to expand ground · Path: click/drag to draw · WASD to move · Arrow keys to rotate/tilt · Scroll to zoom
+      </div>
     </div>
 
     <script type="module" src="/src/main.js"></script>

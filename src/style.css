@@ -127,6 +127,132 @@ body {
 }
 
 /* ============================================
+   Level Editor UI
+   ============================================ */
+
+#level-editor-ui {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  pointer-events: none;
+  z-index: 500;
+  font-family: 'Segoe UI', Arial, sans-serif;
+}
+
+#editor-toolbar {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(10, 14, 24, 0.92);
+  border: 1px solid #4ecdc4;
+  border-radius: 8px;
+  padding: 8px 16px;
+  pointer-events: auto;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+}
+
+.editor-btn {
+  padding: 6px 14px;
+  font-size: 13px;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  background: rgba(78, 205, 196, 0.12);
+  border: 1px solid rgba(78, 205, 196, 0.3);
+  color: #ccc;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+.editor-btn:hover {
+  background: rgba(78, 205, 196, 0.3);
+  color: #fff;
+}
+.editor-btn.active {
+  background: rgba(78, 205, 196, 0.35);
+  border-color: #4ecdc4;
+  color: #fff;
+}
+.editor-back-btn {
+  background: rgba(255, 80, 80, 0.15);
+  border-color: rgba(255, 80, 80, 0.3);
+}
+.editor-back-btn:hover {
+  background: rgba(255, 80, 80, 0.35);
+  color: #fff;
+}
+
+.editor-sm-btn {
+  width: 26px;
+  height: 26px;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0;
+  background: rgba(78, 205, 196, 0.15);
+  border: 1px solid rgba(78, 205, 196, 0.3);
+  color: #ccc;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  transition: background 0.12s;
+}
+.editor-sm-btn:hover {
+  background: rgba(78, 205, 196, 0.35);
+  color: #fff;
+}
+
+.editor-label {
+  font-size: 12px;
+  color: #888;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.editor-value {
+  font-size: 14px;
+  color: #4ecdc4;
+  min-width: 22px;
+  text-align: center;
+  font-weight: bold;
+}
+
+.editor-separator {
+  width: 1px;
+  height: 24px;
+  background: rgba(255,255,255,0.12);
+  margin: 0 4px;
+}
+
+#editor-path-color {
+  width: 30px;
+  height: 26px;
+  border: 1px solid rgba(78,205,196,0.4);
+  border-radius: 4px;
+  background: none;
+  cursor: pointer;
+  padding: 0;
+}
+#editor-path-color::-webkit-color-swatch-wrapper { padding: 2px; }
+#editor-path-color::-webkit-color-swatch { border: none; border-radius: 2px; }
+
+#editor-hint {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(10, 14, 24, 0.8);
+  border: 1px solid rgba(78,205,196,0.2);
+  border-radius: 6px;
+  padding: 6px 18px;
+  color: #666;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  pointer-events: none;
+}
+
+/* ============================================
    Power-Up Flash
    ============================================ */
 

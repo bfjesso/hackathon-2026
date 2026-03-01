@@ -1586,8 +1586,9 @@ window.addEventListener("resize", ()=>{
 });
 
 window.addEventListener("keydown", (e)=>{
-  // Don't process game keys during menu or cutscene
+  // Don't process game keys during menu, cutscene, or level editor
   if (!gameStarted || cutsceneActive) return;
+  if (levelEditor.active) return;
 
   // Toggle build mode
   if (e.key === 'b' || e.key === 'B') {
@@ -1858,6 +1859,7 @@ window.addEventListener('mousemove', (event) => {
 // Click handler for placing/destroying buildings
 window.addEventListener('click', (event) => {
   if (!buildMode || (!ui.selectedBuilding && !ui.destroyMode)) return;
+  if (levelEditor.active) return;
 
   mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
   mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
@@ -3032,6 +3034,496 @@ function createUpgradeShop() {
 }
 
 // ============================================
+// Level Editor Mode
+// ============================================
+
+const levelEditor = (() => {
+  // --- Editor State ---
+  let active = false;
+  const cellSize = 3; // Same cell size as the game
+  let pathColor = '#cc8844';
+  let tool = 'draw'; // 'draw' | 'erase' | 'grass'
+
+  // Ground cells: Set of "x,z" keys — freeform shape
+  const groundCells = new Map(); // "x,z" -> Mesh
+  // Path data: Map of "x,z" -> { color, mesh }
+  const pathCells = new Map();
+
+  // Invisible raycast plane (large, sits at y=0 so we can click anywhere)
+  let raycastPlane = null;
+
+  // Outline group for grid lines around ground cells
+  let outlineGroup = null;
+
+  // Camera control state
+  const camState = {
+    targetX: 0, targetZ: 0,
+    distance: 35,
+    phi: 0.3,
+    theta: 0,
+    keys: { w: false, a: false, s: false, d: false,
+            arrowleft: false, arrowright: false, arrowup: false, arrowdown: false },
+  };
+
+  // Raycaster
+  const editorRaycaster = new THREE.Raycaster();
+  const editorMouse = new THREE.Vector2();
+  let isPainting = false;
+
+  // --- Coordinate helpers ---
+  // Grid coords are arbitrary integers (can be negative)
+  function cellKey(gx, gz) { return `${gx},${gz}`; }
+
+  function gridToWorld(gx, gz) {
+    return {
+      x: gx * cellSize + cellSize / 2,
+      z: gz * cellSize + cellSize / 2,
+    };
+  }
+
+  function worldToGrid(wx, wz) {
+    return {
+      x: Math.floor(wx / cellSize),
+      z: Math.floor(wz / cellSize),
+    };
+  }
+
+  // --- Ground cell management ---
+  function hasGround(gx, gz) {
+    return groundCells.has(cellKey(gx, gz));
+  }
+
+  function addGroundCell(gx, gz) {
+    const key = cellKey(gx, gz);
+    if (groundCells.has(key)) return;
+
+    const geo = new THREE.PlaneGeometry(cellSize, cellSize);
+    const mat = new THREE.MeshStandardMaterial({ color: 0x3a6e3a, roughness: 0.9, metalness: 0.05 });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.rotation.x = -Math.PI / 2;
+    const wp = gridToWorld(gx, gz);
+    mesh.position.set(wp.x, -0.02, wp.z);
+    mesh.receiveShadow = true;
+    scene.add(mesh);
+    groundCells.set(key, mesh);
+
+    rebuildOutlines();
+  }
+
+  function removeGroundCell(gx, gz) {
+    const key = cellKey(gx, gz);
+    const mesh = groundCells.get(key);
+    if (!mesh) return;
+    scene.remove(mesh);
+    mesh.geometry.dispose();
+    mesh.material.dispose();
+    groundCells.delete(key);
+
+    // Also remove path on this cell if any
+    erasePathCell(gx, gz);
+
+    rebuildOutlines();
+  }
+
+  function hasAdjacentGround(gx, gz) {
+    return hasGround(gx - 1, gz) || hasGround(gx + 1, gz) ||
+           hasGround(gx, gz - 1) || hasGround(gx, gz + 1);
+  }
+
+  // --- Outline (grid lines around ground cells) ---
+  function rebuildOutlines() {
+    if (outlineGroup) {
+      scene.remove(outlineGroup);
+      outlineGroup.traverse(child => {
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) child.material.dispose();
+      });
+    }
+    outlineGroup = new THREE.Group();
+    const lineMat = new THREE.LineBasicMaterial({ color: 0x5a5a5a, transparent: true, opacity: 0.45 });
+
+    for (const [key] of groundCells) {
+      const [gx, gz] = key.split(',').map(Number);
+      const x0 = gx * cellSize;
+      const z0 = gz * cellSize;
+      const x1 = x0 + cellSize;
+      const z1 = z0 + cellSize;
+      const y = 0.01;
+
+      // Draw edge only if neighbour in that direction is absent
+      const edges = [
+        { check: !hasGround(gx, gz - 1), pts: [[x0, y, z0], [x1, y, z0]] }, // top
+        { check: !hasGround(gx, gz + 1), pts: [[x0, y, z1], [x1, y, z1]] }, // bottom
+        { check: !hasGround(gx - 1, gz), pts: [[x0, y, z0], [x0, y, z1]] }, // left
+        { check: !hasGround(gx + 1, gz), pts: [[x1, y, z0], [x1, y, z1]] }, // right
+      ];
+
+      // Always draw faint inner grid
+      const innerMat = new THREE.LineBasicMaterial({ color: 0x4a8a4a, transparent: true, opacity: 0.25 });
+      const allEdges = [
+        [[x0, y, z0], [x1, y, z0]],
+        [[x0, y, z1], [x1, y, z1]],
+        [[x0, y, z0], [x0, y, z1]],
+        [[x1, y, z0], [x1, y, z1]],
+      ];
+      for (const pts of allEdges) {
+        const g = new THREE.BufferGeometry().setFromPoints(pts.map(p => new THREE.Vector3(...p)));
+        outlineGroup.add(new THREE.Line(g, innerMat));
+      }
+
+      // Bright border edges
+      for (const edge of edges) {
+        if (!edge.check) continue;
+        const g = new THREE.BufferGeometry().setFromPoints(edge.pts.map(p => new THREE.Vector3(...p)));
+        outlineGroup.add(new THREE.Line(g, lineMat));
+      }
+    }
+
+    scene.add(outlineGroup);
+  }
+
+  // --- Path cell management ---
+  function setPathCell(gx, gz, color) {
+    if (!hasGround(gx, gz)) return; // Can only place path on ground
+    const key = cellKey(gx, gz);
+
+    if (pathCells.has(key) && pathCells.get(key).color === color) return;
+
+    let entry = pathCells.get(key);
+    if (entry) {
+      entry.mesh.material.color.set(color);
+      entry.color = color;
+    } else {
+      const geo = new THREE.PlaneGeometry(cellSize * 0.96, cellSize * 0.96);
+      const mat = new THREE.MeshStandardMaterial({
+        color: color,
+        roughness: 0.7,
+        metalness: 0.05,
+        transparent: true,
+        opacity: 0.85,
+      });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.rotation.x = -Math.PI / 2;
+      const wp = gridToWorld(gx, gz);
+      mesh.position.set(wp.x, 0.02, wp.z);
+      scene.add(mesh);
+      pathCells.set(key, { color, mesh });
+    }
+  }
+
+  function erasePathCell(gx, gz) {
+    const key = cellKey(gx, gz);
+    const entry = pathCells.get(key);
+    if (!entry) return;
+    scene.remove(entry.mesh);
+    entry.mesh.geometry.dispose();
+    entry.mesh.material.dispose();
+    pathCells.delete(key);
+  }
+
+  function clearAllPaths() {
+    for (const [, entry] of pathCells) {
+      scene.remove(entry.mesh);
+      entry.mesh.geometry.dispose();
+      entry.mesh.material.dispose();
+    }
+    pathCells.clear();
+  }
+
+  // --- Build initial ground (default 10x10 rectangle) ---
+  function buildInitialGround() {
+    for (let x = 0; x < 10; x++) {
+      for (let z = 0; z < 10; z++) {
+        addGroundCell(x - 5, z - 5); // centered at origin
+      }
+    }
+    // Outlines are rebuilt in addGroundCell, but do one final rebuild
+    rebuildOutlines();
+  }
+
+  // --- Paint/interact at current mouse position ---
+  function interactAtMouse() {
+    if (!raycastPlane) return;
+    editorRaycaster.setFromCamera(editorMouse, camera);
+    const hits = editorRaycaster.intersectObject(raycastPlane);
+    if (hits.length === 0) return;
+    const pt = hits[0].point;
+    const gc = worldToGrid(pt.x, pt.z);
+
+    if (tool === 'grass') {
+      // In grass mode: click on empty space adjacent to existing ground to add
+      // Click on existing ground to remove (unless it has path — remove path first)
+      if (hasGround(gc.x, gc.z)) {
+        removeGroundCell(gc.x, gc.z);
+      } else if (hasAdjacentGround(gc.x, gc.z) || groundCells.size === 0) {
+        addGroundCell(gc.x, gc.z);
+      }
+    } else if (tool === 'draw') {
+      if (hasGround(gc.x, gc.z)) {
+        setPathCell(gc.x, gc.z, pathColor);
+      }
+    } else if (tool === 'erase') {
+      erasePathCell(gc.x, gc.z);
+    }
+  }
+
+  // --- Camera update ---
+  function updateCamera(dt) {
+    const moveSpeed = 0.4 * dt;
+    const rotateSpeed = 0.03 * dt;
+
+    const forward = new THREE.Vector3(-Math.sin(camState.theta), 0, -Math.cos(camState.theta));
+    const right = new THREE.Vector3(Math.cos(camState.theta), 0, -Math.sin(camState.theta));
+
+    if (camState.keys.w) { camState.targetX += forward.x * moveSpeed; camState.targetZ += forward.z * moveSpeed; }
+    if (camState.keys.s) { camState.targetX -= forward.x * moveSpeed; camState.targetZ -= forward.z * moveSpeed; }
+    if (camState.keys.a) { camState.targetX -= right.x * moveSpeed; camState.targetZ -= right.z * moveSpeed; }
+    if (camState.keys.d) { camState.targetX += right.x * moveSpeed; camState.targetZ += right.z * moveSpeed; }
+
+    if (camState.keys.arrowleft)  camState.theta += rotateSpeed;
+    if (camState.keys.arrowright) camState.theta -= rotateSpeed;
+    if (camState.keys.arrowup)   camState.phi = Math.max(0.05, camState.phi - rotateSpeed);
+    if (camState.keys.arrowdown) camState.phi = Math.min(Math.PI / 2 - 0.05, camState.phi + rotateSpeed);
+
+    const sp = Math.sin(camState.phi);
+    const cp = Math.cos(camState.phi);
+    const st = Math.sin(camState.theta);
+    const ct = Math.cos(camState.theta);
+
+    camera.position.set(
+      camState.targetX + camState.distance * sp * st,
+      camState.distance * cp,
+      camState.targetZ + camState.distance * sp * ct
+    );
+    camera.lookAt(camState.targetX, 0, camState.targetZ);
+  }
+
+  // --- Event handlers ---
+  const handlers = {};
+
+  function onMouseDown(e) {
+    if (e.target.closest('#editor-toolbar') || e.target.closest('#level-editor-ui button') || e.target.closest('input')) return;
+
+    if (e.button === 0) {
+      isPainting = true;
+      editorMouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+      editorMouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+      interactAtMouse();
+    }
+  }
+
+  function onMouseMove(e) {
+    editorMouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+    editorMouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+
+    if (isPainting && tool !== 'grass') {
+      // Drag-painting for path draw/erase only (grass is click-per-cell)
+      interactAtMouse();
+    }
+  }
+
+  function onMouseUp(e) {
+    if (e.button === 0) isPainting = false;
+  }
+
+  function onWheel(e) {
+    camState.distance = Math.max(5, Math.min(120, camState.distance + e.deltaY * 0.05));
+  }
+
+  function onKeyDown(e) {
+    const k = e.key.toLowerCase();
+    if (k in camState.keys) {
+      camState.keys[k] = true;
+      e.preventDefault();
+    }
+    if (document.activeElement.tagName !== 'INPUT') {
+      if (k === 'g') setTool('grass');
+      if (k === 'q') setTool('draw');
+      if (k === 'e') setTool('erase');
+    }
+  }
+
+  function onKeyUp(e) {
+    const k = e.key.toLowerCase();
+    if (k in camState.keys) camState.keys[k] = false;
+  }
+
+  function onContextMenu(e) {
+    e.preventDefault();
+  }
+
+  // --- Tool selection ---
+  function setTool(t) {
+    tool = t;
+    document.getElementById('editor-grass-btn')?.classList.toggle('active', t === 'grass');
+    document.getElementById('editor-draw-btn')?.classList.toggle('active', t === 'draw');
+    document.getElementById('editor-erase-btn')?.classList.toggle('active', t === 'erase');
+  }
+
+  // --- Editor render loop ---
+  let editorAnimId = null;
+  let editorLastTime = 0;
+
+  function editorLoop(timestamp) {
+    if (!active) return;
+    editorAnimId = requestAnimationFrame(editorLoop);
+
+    if (editorLastTime === 0) editorLastTime = timestamp;
+    const dt = Math.min((timestamp - editorLastTime) / 16.67, 5);
+    editorLastTime = timestamp;
+
+    updateCamera(dt);
+    renderer.render(scene, camera);
+  }
+
+  // --- Hide/show game objects ---
+  let hiddenObjects = [];
+
+  function hideGameObjects() {
+    hiddenObjects = [];
+    const keepTypes = ['AmbientLight', 'DirectionalLight', 'PointLight', 'HemisphereLight'];
+    scene.children.forEach(child => {
+      if (!keepTypes.includes(child.type) && child !== raycastPlane && child !== outlineGroup) {
+        if (child.visible) {
+          child.visible = false;
+          hiddenObjects.push(child);
+        }
+      }
+    });
+  }
+
+  function showGameObjects() {
+    hiddenObjects.forEach(obj => { obj.visible = true; });
+    hiddenObjects = [];
+  }
+
+  // --- Cleanup all editor objects ---
+  function cleanupEditorObjects() {
+    // Remove ground cells
+    for (const [, mesh] of groundCells) {
+      scene.remove(mesh);
+      mesh.geometry.dispose();
+      mesh.material.dispose();
+    }
+    groundCells.clear();
+
+    // Remove paths
+    clearAllPaths();
+
+    // Remove outlines
+    if (outlineGroup) {
+      scene.remove(outlineGroup);
+      outlineGroup.traverse(child => {
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) child.material.dispose();
+      });
+      outlineGroup = null;
+    }
+
+    // Remove raycast plane
+    if (raycastPlane) {
+      scene.remove(raycastPlane);
+      raycastPlane.geometry.dispose();
+      raycastPlane.material.dispose();
+      raycastPlane = null;
+    }
+  }
+
+  // --- Public API ---
+  function start() {
+    active = true;
+
+    document.getElementById('main-menu').style.display = 'none';
+    if (ui.container) ui.container.style.display = 'none';
+    document.getElementById('level-editor-ui').style.display = 'block';
+
+    hideGameObjects();
+
+    scene.background = new THREE.Color(0x1a2a3a);
+    scene.fog = null;
+
+    // Create invisible raycast plane (large enough to click anywhere)
+    const rpGeo = new THREE.PlaneGeometry(600, 600);
+    const rpMat = new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide });
+    raycastPlane = new THREE.Mesh(rpGeo, rpMat);
+    raycastPlane.rotation.x = -Math.PI / 2;
+    raycastPlane.position.y = -0.01;
+    scene.add(raycastPlane);
+
+    // Build default ground
+    buildInitialGround();
+
+    // Reset camera
+    camState.targetX = 0;
+    camState.targetZ = 0;
+    camState.distance = 35;
+    camState.phi = 0.3;
+    camState.theta = 0;
+
+    // Attach events
+    handlers.mousedown = onMouseDown;
+    handlers.mousemove = onMouseMove;
+    handlers.mouseup = onMouseUp;
+    handlers.wheel = onWheel;
+    handlers.keydown = onKeyDown;
+    handlers.keyup = onKeyUp;
+    handlers.contextmenu = onContextMenu;
+
+    window.addEventListener('mousedown', handlers.mousedown);
+    window.addEventListener('mousemove', handlers.mousemove);
+    window.addEventListener('mouseup', handlers.mouseup);
+    window.addEventListener('wheel', handlers.wheel);
+    window.addEventListener('keydown', handlers.keydown, true);
+    window.addEventListener('keyup', handlers.keyup);
+    window.addEventListener('contextmenu', handlers.contextmenu);
+
+    // Wire toolbar
+    document.getElementById('editor-grass-btn').onclick = () => setTool('grass');
+    document.getElementById('editor-draw-btn').onclick = () => setTool('draw');
+    document.getElementById('editor-erase-btn').onclick = () => setTool('erase');
+    document.getElementById('editor-path-color').oninput = (e) => { pathColor = e.target.value; };
+    document.getElementById('editor-clear-btn').onclick = () => clearAllPaths();
+    document.getElementById('editor-back-btn').onclick = () => stop();
+
+    setTool('draw');
+
+    editorLastTime = 0;
+    editorAnimId = requestAnimationFrame(editorLoop);
+  }
+
+  function stop() {
+    active = false;
+
+    if (editorAnimId) cancelAnimationFrame(editorAnimId);
+    editorAnimId = null;
+
+    window.removeEventListener('mousedown', handlers.mousedown);
+    window.removeEventListener('mousemove', handlers.mousemove);
+    window.removeEventListener('mouseup', handlers.mouseup);
+    window.removeEventListener('wheel', handlers.wheel);
+    window.removeEventListener('keydown', handlers.keydown, true);
+    window.removeEventListener('keyup', handlers.keyup);
+    window.removeEventListener('contextmenu', handlers.contextmenu);
+
+    cleanupEditorObjects();
+    showGameObjects();
+
+    scene.background = new THREE.Color(0x90c8ff);
+    scene.fog = new THREE.Fog(0x90c8ff, 10, 100);
+
+    document.getElementById('level-editor-ui').style.display = 'none';
+    document.getElementById('main-menu').style.display = 'flex';
+    document.getElementById('main-menu').style.opacity = '1';
+
+    camera.position.set(defaultCameraPos.x, defaultCameraPos.y, defaultCameraPos.z);
+    camera.lookAt(0, 0, 0);
+    renderer.render(scene, camera);
+  }
+
+  return { start, stop, get active() { return active; } };
+})();
+
+// ============================================
 // Game Initialization
 // ============================================
 
@@ -3311,6 +3803,12 @@ async function initGame() {
       playCutscene();
       SoundManager.play('newRound');
     }, 600);
+  });
+
+  // Wire up level creator button
+  const levelCreatorBtn = document.getElementById('level-creator-btn');
+  levelCreatorBtn.addEventListener('click', () => {
+    levelEditor.start();
   });
 }
 
