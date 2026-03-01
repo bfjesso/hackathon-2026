@@ -1170,9 +1170,13 @@ function startRound() {
   SoundManager.play('newRound');
   console.log(`Round ${currentRound} started! Kill ${zombiesToKillThisRound} zombies. Max on screen: ${currentMaxZombies}`);
   
-  // Spawn a big zombie starting at round 5, then every 5 rounds
-  if (currentRound >= 5 && currentRound % 5 === 0) {
-    spawnBigZombie();
+  // Spawn big zombies starting at round 5 — count ramps up over time
+  if (currentRound >= 5) {
+    // 1 at round 5-8, 2 at round 9-13, 3 at round 14-19, etc.
+    const bigCount = Math.floor(1 + (currentRound - 5) * 0.2);
+    for (let i = 0; i < bigCount; i++) {
+      spawnBigZombie();
+    }
   }
 }
 
@@ -1965,9 +1969,12 @@ function BigZombie(x, z) {
   this.vX = 0;
   this.vZ = 0;
   this.speed = 0.12;           // Much slower than regular zombies (0.5)
-  this.maxHealth = 2000;       // A LOT more health
+  // Health scales so they always feel like tanks
+  // Base 1200 HP + 20% more per round past round 5
+  const roundScale = 1 + Math.max(0, currentRound - 5) * 0.2;
+  this.maxHealth = Math.round(1200 * roundScale);
   this.health = this.maxHealth;
-  this.damage = 2.0;           // Hits harder too
+  this.damage = 2.0 * roundScale; // Damage scales too
   this.isBigZombie = true;
 
   this.targetBuilding = null;
