@@ -1217,28 +1217,26 @@ function startRound() {
   if (currentRound % 3 === 0 && currentRound !== 0) {
     isNight = true;
     if (customLevel) {
-      // Custom levels: use the theme's colors (keep theme sky)
       const themeName = customLevel.theme || 'default';
       const theme = levelThemes[themeName] || levelThemes['default'];
-      // Darken the theme sky slightly for night rounds
       const nightSky = new THREE.Color(theme.skyColor).multiplyScalar(0.3);
-      scene.background = nightSky;
-      scene.fog = new THREE.Fog(nightSky, 10, 100);
+      // Ensure fog exists for the transition
+      if (!scene.fog) scene.fog = new THREE.Fog(scene.background.clone(), 10, 100);
+      startSkyTransition(nightSky, nightSky, 3000);
     } else {
-      scene.background = new THREE.Color(0x0a0a1a); 
-      scene.fog = new THREE.FogExp2(0x0a0a1a, 0.02);
-      scene.fog = new THREE.Fog(0x0a0a1a, 10, 100);
+      if (!scene.fog) scene.fog = new THREE.Fog(scene.background.clone(), 10, 100);
+      startSkyTransition(0x0a0a1a, 0x0a0a1a, 3000);
     }
   } else {
     isNight = false;
     if (customLevel) {
       const themeName = customLevel.theme || 'default';
       const theme = levelThemes[themeName] || levelThemes['default'];
-      scene.background = new THREE.Color(theme.skyColor);
-      scene.fog = new THREE.Fog(theme.fogColor, 20, 120);
+      if (!scene.fog) scene.fog = new THREE.Fog(scene.background.clone(), 20, 120);
+      startSkyTransition(theme.skyColor, theme.fogColor, 3000);
     } else {
-      scene.background = new THREE.Color(0x87ceeb);
-      scene.fog = new THREE.Fog(0x90c8ff, 10, 100);
+      if (!scene.fog) scene.fog = new THREE.Fog(scene.background.clone(), 10, 100);
+      startSkyTransition(0x87ceeb, 0x90c8ff, 3000);
     }
   }
   zombiesKilledThisRound = 0;
@@ -1335,6 +1333,40 @@ let currentTime = 0; // in milliseconds
 let lastFrameTime = 0; // for delta time calculation
 let spawnAccumulator = 0; // accumulator for zombie spawn timing
 
+// Sky transition system for smooth day/night fades
+const skyTransition = {
+  active: false,
+  startBg: new THREE.Color(),
+  targetBg: new THREE.Color(),
+  startFog: new THREE.Color(),
+  targetFog: new THREE.Color(),
+  duration: 3000, // ms
+  elapsed: 0,
+};
+
+function startSkyTransition(targetBgColor, targetFogColor, duration = 3000) {
+  skyTransition.startBg.copy(scene.background);
+  skyTransition.targetBg.set(targetBgColor);
+  skyTransition.startFog.copy(scene.fog ? scene.fog.color : scene.background);
+  skyTransition.targetFog.set(targetFogColor);
+  skyTransition.duration = duration;
+  skyTransition.elapsed = 0;
+  skyTransition.active = true;
+}
+
+function updateSkyTransition(deltaMs) {
+  if (!skyTransition.active) return;
+  skyTransition.elapsed += deltaMs;
+  const t = Math.min(skyTransition.elapsed / skyTransition.duration, 1);
+  // Smooth ease-in-out
+  const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+  scene.background.copy(skyTransition.startBg).lerp(skyTransition.targetBg, ease);
+  if (scene.fog) {
+    scene.fog.color.copy(skyTransition.startFog).lerp(skyTransition.targetFog, ease);
+  }
+  if (t >= 1) skyTransition.active = false;
+}
+
 function gameLoop(timestamp) {
   if (gameOver) return;
 
@@ -1384,6 +1416,9 @@ function gameLoop(timestamp) {
 
   // Update tracer effects
   updateTracers();
+
+  // Update sky transition (smooth day/night fade)
+  updateSkyTransition(deltaTimeMs);
   
   // Update round system
   updateRound(dt);
@@ -4580,6 +4615,9 @@ async function initGame() {
 
   // Render one frame so the scene is ready for cutscene camera fly-through
   renderer.render(scene, camera);
+
+  // Reveal the page now that everything is ready
+  document.body.classList.add('ready');
 
   // Wire up menu button
   const newGameBtn = document.getElementById('new-game-btn');

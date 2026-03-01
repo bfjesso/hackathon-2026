@@ -4,6 +4,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Power Defense</title>
+    <style>
+      /* Prevent flash of unstyled content */
+      html, body { margin: 0; padding: 0; background: #000; overflow: hidden; }
+      body { opacity: 0; transition: opacity 0.15s ease; }
+      body.ready { opacity: 1; }
+    </style>
   </head>
   <body>
     <!-- Main Menu -->
