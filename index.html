@@ -30,42 +30,70 @@
     <div id="level-editor-ui" style="display:none;">
       <!-- Top toolbar -->
       <div id="editor-toolbar">
-        <button class="editor-btn" id="editor-grass-btn" title="Add/Remove Ground (G)">🟩 Grass</button>
-        <button class="editor-btn active" id="editor-draw-btn" title="Draw Path (Q)">🖌️ Path</button>
-        <button class="editor-btn" id="editor-erase-btn" title="Erase (E)">🧹 Erase</button>
-        <div class="editor-separator"></div>
-        <label class="editor-label">Color:</label>
-        <input type="color" id="editor-path-color" value="#cc8844" title="Path Color">
-        <div class="editor-separator"></div>
-        <button class="editor-btn editor-spawner-btn" id="editor-spawner-btn" title="Place Zombie Spawner (Z)">💀 Spawner</button>
-        <button class="editor-btn editor-target-btn" id="editor-target-btn" title="Place Energy Target (T)">⚡ Target</button>
-        <div class="editor-separator"></div>
-        <button class="editor-btn editor-placeable-btn" id="editor-placeable-btn" title="Mark Buildable Tiles (R)">🔧 Placeable</button>
-        <button class="editor-sm-btn" id="editor-all-placeable" title="Make all ground tiles placeable">All</button>
-        <button class="editor-sm-btn" id="editor-none-placeable" title="Remove all placeable markings">None</button>
-        <div class="editor-separator"></div>
-        <button class="editor-btn" id="editor-clear-btn" title="Clear All Paths">🗑️ Clear</button>
-        <div class="editor-separator"></div>
-        <label class="editor-label">Theme:</label>
-        <select id="editor-theme-select" class="editor-select">
-          <option value="default">☀️ Default</option>
-          <option value="winter">❄️ Winter</option>
-          <option value="halloween">🎃 Halloween</option>
-          <option value="christmas">🎄 Christmas</option>
-          <option value="desert">🏜️ Desert</option>
-          <option value="night">🌙 Night</option>
-          <option value="ocean">🌊 Ocean</option>
-        </select>
-        <div class="editor-separator"></div>
-        <label class="editor-label">Build View:</label>
-        <select id="editor-buildview-select" class="editor-select">
-          <option value="free">🎥 Free Camera</option>
-          <option value="set">📌 Set View</option>
-        </select>
-        <button class="editor-sm-btn" id="editor-setview-btn" title="Capture current camera as build view" style="display:none;">📷 Capture</button>
-        <div class="editor-separator"></div>
-        <button class="editor-btn editor-play-btn" id="editor-play-btn" title="Save & Play this level">▶️ Play Level</button>
-        <button class="editor-btn editor-back-btn" id="editor-back-btn">← Back to Menu</button>
+        <div class="editor-row">
+          <div class="editor-group">
+            <span class="editor-group-label">Terrain</span>
+            <div class="editor-group-items">
+              <button class="editor-btn" id="editor-grass-btn" title="Add/Remove Ground (G)">🟩 Grass</button>
+              <button class="editor-btn active" id="editor-draw-btn" title="Draw Path (Q)">🖌️ Path</button>
+              <button class="editor-btn" id="editor-erase-btn" title="Erase (E)">🧹 Erase</button>
+              <input type="color" id="editor-path-color" value="#cc8844" title="Path Color">
+            </div>
+          </div>
+          <div class="editor-group">
+            <span class="editor-group-label">Points</span>
+            <div class="editor-group-items">
+              <button class="editor-btn editor-spawner-btn" id="editor-spawner-btn" title="Place Zombie Spawner (Z)">💀 Spawner</button>
+              <button class="editor-btn editor-target-btn" id="editor-target-btn" title="Place Energy Target (T)">⚡ Target</button>
+            </div>
+          </div>
+          <div class="editor-group">
+            <span class="editor-group-label">Building Zones</span>
+            <div class="editor-group-items">
+              <button class="editor-btn editor-placeable-btn" id="editor-placeable-btn" title="Mark Buildable Tiles (R)">🔧 Placeable</button>
+              <button class="editor-sm-btn" id="editor-all-placeable" title="Make all ground tiles placeable">All</button>
+              <button class="editor-sm-btn" id="editor-none-placeable" title="Remove all placeable markings">None</button>
+            </div>
+          </div>
+          <div class="editor-group">
+            <span class="editor-group-label">Actions</span>
+            <div class="editor-group-items">
+              <button class="editor-btn" id="editor-clear-btn" title="Clear All Paths">🗑️ Clear</button>
+            </div>
+          </div>
+        </div>
+        <div class="editor-row">
+          <div class="editor-group">
+            <span class="editor-group-label">Theme</span>
+            <div class="editor-group-items">
+              <select id="editor-theme-select" class="editor-select">
+                <option value="default">☀️ Default</option>
+                <option value="winter">❄️ Winter</option>
+                <option value="halloween">🎃 Halloween</option>
+                <option value="christmas">🎄 Christmas</option>
+                <option value="desert">🏜️ Desert</option>
+                <option value="night">🌙 Night</option>
+                <option value="ocean">🌊 Ocean</option>
+              </select>
+            </div>
+          </div>
+          <div class="editor-group">
+            <span class="editor-group-label">Build View</span>
+            <div class="editor-group-items">
+              <select id="editor-buildview-select" class="editor-select">
+                <option value="free">🎥 Free Camera</option>
+                <option value="set">📌 Set View</option>
+              </select>
+              <button class="editor-sm-btn" id="editor-setview-btn" title="Capture current camera as build view" style="display:none;">📷 Capture</button>
+            </div>
+          </div>
+          <div class="editor-group editor-group-right">
+            <div class="editor-group-items">
+              <button class="editor-btn editor-play-btn" id="editor-play-btn" title="Save & Play this level">▶️ Play Level</button>
+              <button class="editor-btn editor-back-btn" id="editor-back-btn">← Back</button>
+            </div>
+          </div>
+        </div>
       </div>
       <!-- Bottom hint bar -->
       <div id="editor-hint">
