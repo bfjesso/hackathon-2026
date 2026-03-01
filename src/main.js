@@ -1216,6 +1216,10 @@ const gameCamState = {
 
 function updateGameCamera(deltaMs) {
   if (!gameCamState.active) return;
+  // Don't override camera when build mode uses a set view
+  if (buildMode && customLevel && customLevel.buildView === 'set' && customLevel.buildCam) return;
+  // Don't override camera in non-custom build mode either
+  if (buildMode && !customLevel) return;
   const dt = deltaMs / 16.67;
   const moveSpeed = 0.4 * dt;
   const rotateSpeed = 0.03 * dt;
