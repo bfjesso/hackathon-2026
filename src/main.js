@@ -1260,13 +1260,19 @@ let totalZombiesSpawnedThisRound = 0;
  * Get zombie stats scaled for current round
  */
 function getZombieStatsForRound() {
+  const gs = customLevel && customLevel.gameSettings;
+  const baseHealth = gs ? gs.zombieBaseHealth : 100;
+  const baseSpeed = gs ? gs.zombieBaseSpeed : 0.5;
+  const baseDamage = gs ? gs.zombieBaseDamage : 0.5;
+  const maxSpeedCap = gs ? gs.zombieMaxSpeed : 5.0;
+
   const healthMultiplier = 1 + (currentRound - 1) * roundConfig.zombieHealthIncrease;
   const damageMultiplier = 1 + (currentRound - 1) * roundConfig.zombieDamageIncrease;
   const speedMultiplier = 1 + (currentRound - 1) * roundConfig.zombieSpeedIncrease;
   return {
-    health: Math.round(100 * healthMultiplier),
-    damage: 0.5 * damageMultiplier,
-    speed: Math.min(0.5 * speedMultiplier, 5.0) // Cap speed so zombies can't skip past buildings
+    health: Math.round(baseHealth * healthMultiplier),
+    damage: baseDamage * damageMultiplier,
+    speed: Math.min(baseSpeed * speedMultiplier, maxSpeedCap)
   };
 }
 
@@ -3504,6 +3510,27 @@ const levelEditor = (() => {
   let selectedTheme = 'default';
   let buildView = 'free'; // 'free' | 'set'
   let capturedBuildCam = null; // { targetX, targetZ, distance, phi, theta } when buildView === 'set'
+  let settingsPanelOpen = false;
+
+  // Default game settings for custom levels
+  const defaultGameSettings = {
+    zombieBaseHealth: 100,
+    zombieBaseSpeed: 0.5,
+    zombieBaseDamage: 0.5,
+    zombieMaxSpeed: 5,
+    zombieHealthIncrease: 10,   // percent per round
+    zombieDamageIncrease: 5,
+    zombieSpeedIncrease: 10,
+    baseZombiesToKill: 3,
+    zombiesPerRoundIncrease: 3,
+    roundTimeLimit: 30,
+    roundBonus: 100,
+    baseMaxZombies: 3,
+    maxZombiesIncrease: 2,
+    startingEnergy: 500,
+    startingHealth: 100,
+  };
+  let gameSettings = { ...defaultGameSettings };
 
   // Ground cells: Set of "x,z" keys — freeform shape
   const groundCells = new Map(); // "x,z" -> Mesh
@@ -4075,6 +4102,52 @@ const levelEditor = (() => {
   // Track the id of the level being edited (null = new level)
   let editingLevelId = null;
 
+  // --- Settings panel helpers ---
+  function toggleSettingsPanel() {
+    settingsPanelOpen = !settingsPanelOpen;
+    document.getElementById('editor-settings-panel').style.display = settingsPanelOpen ? 'block' : 'none';
+    document.getElementById('editor-settings-btn').classList.toggle('active', settingsPanelOpen);
+    if (!settingsPanelOpen) {
+      readSettingsFromPanel();
+    }
+  }
+
+  function writeSettingsToPanel() {
+    document.getElementById('esp-zombie-health').value = gameSettings.zombieBaseHealth;
+    document.getElementById('esp-zombie-speed').value = gameSettings.zombieBaseSpeed;
+    document.getElementById('esp-zombie-damage').value = gameSettings.zombieBaseDamage;
+    document.getElementById('esp-zombie-max-speed').value = gameSettings.zombieMaxSpeed;
+    document.getElementById('esp-health-increase').value = gameSettings.zombieHealthIncrease;
+    document.getElementById('esp-damage-increase').value = gameSettings.zombieDamageIncrease;
+    document.getElementById('esp-speed-increase').value = gameSettings.zombieSpeedIncrease;
+    document.getElementById('esp-base-zombies').value = gameSettings.baseZombiesToKill;
+    document.getElementById('esp-zombies-per-round').value = gameSettings.zombiesPerRoundIncrease;
+    document.getElementById('esp-round-time').value = gameSettings.roundTimeLimit;
+    document.getElementById('esp-round-bonus').value = gameSettings.roundBonus;
+    document.getElementById('esp-max-zombies').value = gameSettings.baseMaxZombies;
+    document.getElementById('esp-max-zombies-increase').value = gameSettings.maxZombiesIncrease;
+    document.getElementById('esp-starting-energy').value = gameSettings.startingEnergy;
+    document.getElementById('esp-starting-health').value = gameSettings.startingHealth;
+  }
+
+  function readSettingsFromPanel() {
+    gameSettings.zombieBaseHealth = parseFloat(document.getElementById('esp-zombie-health').value) || 100;
+    gameSettings.zombieBaseSpeed = parseFloat(document.getElementById('esp-zombie-speed').value) || 0.5;
+    gameSettings.zombieBaseDamage = parseFloat(document.getElementById('esp-zombie-damage').value) || 0.5;
+    gameSettings.zombieMaxSpeed = parseFloat(document.getElementById('esp-zombie-max-speed').value) || 5;
+    gameSettings.zombieHealthIncrease = parseFloat(document.getElementById('esp-health-increase').value) || 10;
+    gameSettings.zombieDamageIncrease = parseFloat(document.getElementById('esp-damage-increase').value) || 5;
+    gameSettings.zombieSpeedIncrease = parseFloat(document.getElementById('esp-speed-increase').value) || 10;
+    gameSettings.baseZombiesToKill = parseInt(document.getElementById('esp-base-zombies').value) || 3;
+    gameSettings.zombiesPerRoundIncrease = parseInt(document.getElementById('esp-zombies-per-round').value) || 3;
+    gameSettings.roundTimeLimit = parseInt(document.getElementById('esp-round-time').value) || 30;
+    gameSettings.roundBonus = parseInt(document.getElementById('esp-round-bonus').value) || 100;
+    gameSettings.baseMaxZombies = parseInt(document.getElementById('esp-max-zombies').value) || 3;
+    gameSettings.maxZombiesIncrease = parseInt(document.getElementById('esp-max-zombies-increase').value) || 2;
+    gameSettings.startingEnergy = parseInt(document.getElementById('esp-starting-energy').value) || 500;
+    gameSettings.startingHealth = parseInt(document.getElementById('esp-starting-health').value) || 100;
+  }
+
   // --- Import level data into the editor (for loading saved levels) ---
   function importLevel(data) {
     // Clear any existing editor objects
@@ -4130,6 +4203,13 @@ const levelEditor = (() => {
     }
     if (data.buildCam) {
       capturedBuildCam = { ...data.buildCam };
+    }
+
+    // Restore game settings
+    if (data.gameSettings) {
+      gameSettings = { ...defaultGameSettings, ...data.gameSettings };
+    } else {
+      gameSettings = { ...defaultGameSettings };
     }
 
     rebuildOutlines();
@@ -4201,6 +4281,7 @@ const levelEditor = (() => {
     document.getElementById('editor-none-placeable').onclick = () => makeNonePlaceable();
     document.getElementById('editor-path-color').oninput = (e) => { pathColor = e.target.value; };
     document.getElementById('editor-clear-btn').onclick = () => clearAllPaths();
+    document.getElementById('editor-settings-btn').onclick = () => toggleSettingsPanel();
     document.getElementById('editor-theme-select').onchange = (e) => { selectedTheme = e.target.value; applyEditorThemePreview(e.target.value); };
     document.getElementById('editor-buildview-select').onchange = (e) => {
       buildView = e.target.value;
@@ -4231,7 +4312,20 @@ const levelEditor = (() => {
       capturedBuildCam = null;
       document.getElementById('editor-buildview-select').value = 'free';
       document.getElementById('editor-setview-btn').style.display = 'none';
+      gameSettings = { ...defaultGameSettings };
     }
+
+    // Always sync panel inputs from current gameSettings
+    writeSettingsToPanel();
+
+    // Wire reset button & close settings panel
+    document.getElementById('esp-reset-btn').onclick = () => {
+      gameSettings = { ...defaultGameSettings };
+      writeSettingsToPanel();
+    };
+    settingsPanelOpen = false;
+    document.getElementById('editor-settings-panel').style.display = 'none';
+    document.getElementById('editor-settings-btn').classList.remove('active');
 
     setTool('draw');
 
@@ -4272,6 +4366,8 @@ const levelEditor = (() => {
 
   // --- Export level data ---
   function exportLevel() {
+    // Read latest settings from panel before exporting
+    readSettingsFromPanel();
     const data = {
       groundCells: [],
       pathCells: [],
@@ -4281,6 +4377,7 @@ const levelEditor = (() => {
       theme: selectedTheme,
       buildView: buildView,
       buildCam: buildView === 'set' && capturedBuildCam ? { ...capturedBuildCam } : null,
+      gameSettings: { ...gameSettings },
     };
     for (const [key] of groundCells) {
       const [gx, gz] = key.split(',').map(Number);
@@ -4876,6 +4973,23 @@ function setupCustomLevel(level) {
   for (const k in gameCamState.keys) gameCamState.keys[k] = false;
 
   // Theme sky/fog already applied above
+
+  // Apply custom game settings to roundConfig if present
+  const gs = level.gameSettings;
+  if (gs) {
+    roundConfig.baseZombiesToKill = gs.baseZombiesToKill;
+    roundConfig.zombiesPerRoundIncrease = gs.zombiesPerRoundIncrease;
+    roundConfig.roundTimeLimit = gs.roundTimeLimit;
+    roundConfig.zombieHealthIncrease = gs.zombieHealthIncrease / 100;   // stored as %, convert to multiplier
+    roundConfig.zombieDamageIncrease = gs.zombieDamageIncrease / 100;
+    roundConfig.zombieSpeedIncrease = gs.zombieSpeedIncrease / 100;
+    roundConfig.maxZombiesIncrease = gs.maxZombiesIncrease;
+    roundConfig.baseMaxZombies = gs.baseMaxZombies;
+    roundConfig.roundBonus = gs.roundBonus;
+    energy = gs.startingEnergy;
+    playerHealth = gs.startingHealth;
+    currentMaxZombies = gs.baseMaxZombies;
+  }
 
   // Start gameplay directly (skip cutscene)
   if (ui.container) ui.container.style.display = 'flex';

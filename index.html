@@ -120,6 +120,7 @@
             <span class="editor-group-label">Actions</span>
             <div class="editor-group-items">
               <button class="editor-btn" id="editor-clear-btn" title="Clear All Paths">🗑️ Clear</button>
+              <button class="editor-btn editor-settings-btn" id="editor-settings-btn" title="Zombie & Round Settings">⚙️ Settings</button>
             </div>
           </div>
         </div>
@@ -156,6 +157,40 @@
             </div>
           </div>
         </div>
+      </div>
+      <!-- Settings Panel (collapsible) -->
+      <div id="editor-settings-panel" style="display:none;">
+        <div class="esp-title">⚙️ Zombie & Round Settings</div>
+        <div class="esp-grid">
+          <div class="esp-section">
+            <div class="esp-section-title">🧟 Zombies</div>
+            <label class="esp-row"><span>Base Health</span><input type="number" id="esp-zombie-health" class="esp-input" value="100" min="1" max="10000" step="10"></label>
+            <label class="esp-row"><span>Base Speed</span><input type="number" id="esp-zombie-speed" class="esp-input" value="0.5" min="0.1" max="10" step="0.1"></label>
+            <label class="esp-row"><span>Base Damage</span><input type="number" id="esp-zombie-damage" class="esp-input" value="0.5" min="0.1" max="50" step="0.1"></label>
+            <label class="esp-row"><span>Max Speed Cap</span><input type="number" id="esp-zombie-max-speed" class="esp-input" value="5" min="0.5" max="20" step="0.5"></label>
+          </div>
+          <div class="esp-section">
+            <div class="esp-section-title">📈 Scaling Per Round</div>
+            <label class="esp-row"><span>Health +%</span><input type="number" id="esp-health-increase" class="esp-input" value="10" min="0" max="200" step="1"></label>
+            <label class="esp-row"><span>Damage +%</span><input type="number" id="esp-damage-increase" class="esp-input" value="5" min="0" max="200" step="1"></label>
+            <label class="esp-row"><span>Speed +%</span><input type="number" id="esp-speed-increase" class="esp-input" value="10" min="0" max="200" step="1"></label>
+          </div>
+          <div class="esp-section">
+            <div class="esp-section-title">🔄 Rounds</div>
+            <label class="esp-row"><span>Zombies in Round 1</span><input type="number" id="esp-base-zombies" class="esp-input" value="3" min="1" max="200" step="1"></label>
+            <label class="esp-row"><span>Extra Zombies / Round</span><input type="number" id="esp-zombies-per-round" class="esp-input" value="3" min="0" max="50" step="1"></label>
+            <label class="esp-row"><span>Round Time (sec)</span><input type="number" id="esp-round-time" class="esp-input" value="30" min="5" max="300" step="5"></label>
+            <label class="esp-row"><span>Round Bonus Energy</span><input type="number" id="esp-round-bonus" class="esp-input" value="100" min="0" max="5000" step="25"></label>
+          </div>
+          <div class="esp-section">
+            <div class="esp-section-title">👥 Spawn Limits</div>
+            <label class="esp-row"><span>Max Zombies on Screen</span><input type="number" id="esp-max-zombies" class="esp-input" value="3" min="1" max="100" step="1"></label>
+            <label class="esp-row"><span>Extra Max / Round</span><input type="number" id="esp-max-zombies-increase" class="esp-input" value="2" min="0" max="20" step="1"></label>
+            <label class="esp-row"><span>Starting Energy</span><input type="number" id="esp-starting-energy" class="esp-input" value="500" min="0" max="50000" step="50"></label>
+            <label class="esp-row"><span>Starting Health</span><input type="number" id="esp-starting-health" class="esp-input" value="100" min="1" max="10000" step="10"></label>
+          </div>
+        </div>
+        <button class="editor-sm-btn" id="esp-reset-btn" style="margin-top:6px;">↺ Reset to Defaults</button>
       </div>
       <!-- Bottom hint bar -->
       <div id="editor-hint">
