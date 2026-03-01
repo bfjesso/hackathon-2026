@@ -80,6 +80,11 @@ let cutsceneActive = false;
 let gameStarted = false;
 let isNight = false;
 
+// Custom level data (null = normal game, otherwise object from editor)
+// { groundCells: [{gx,gz}], pathCells: [{gx,gz,color}], spawner: {gx,gz}|null,
+//   target: {gx,gz}|null, placeableCells: [{gx,gz}] }
+let customLevel = null;
+
 const hydroElectricRate = 0.25;
 
 // Upgrade state - tracks upgrade levels for each building type
@@ -189,12 +194,14 @@ const gridConfig = {
   cellSize: 3,      // Size of each grid cell in world units
   gridWidth: 10,    // Number of cells in X direction
   gridHeight: 10,   // Number of cells in Z direction
+  _customOffsetX: null,  // Override for custom levels
+  _customOffsetZ: null,
   
   // Computed properties
   get totalWidth() { return this.cellSize * this.gridWidth; },
   get totalHeight() { return this.cellSize * this.gridHeight; },
-  get offsetX() { return -this.totalWidth / 2; },
-  get offsetZ() { return -this.totalHeight / 2; },
+  get offsetX() { return this._customOffsetX !== null ? this._customOffsetX : -this.totalWidth / 2; },
+  get offsetZ() { return this._customOffsetZ !== null ? this._customOffsetZ : -this.totalHeight / 2; },
 };
 
 // Grid data structure to track what's placed where
@@ -1209,14 +1216,30 @@ function startRound() {
   currentRound++;
   if (currentRound % 3 === 0 && currentRound !== 0) {
     isNight = true;
-    scene.background = new THREE.Color(0x0a0a1a); 
-    scene.fog = new THREE.FogExp2(0x0a0a1a, 0.02);
-    scene.fog = new THREE.Fog(0x0a0a1a, 10, 100);
+    if (customLevel) {
+      // Custom levels: use the theme's colors (keep theme sky)
+      const themeName = customLevel.theme || 'default';
+      const theme = levelThemes[themeName] || levelThemes['default'];
+      // Darken the theme sky slightly for night rounds
+      const nightSky = new THREE.Color(theme.skyColor).multiplyScalar(0.3);
+      scene.background = nightSky;
+      scene.fog = new THREE.Fog(nightSky, 10, 100);
+    } else {
+      scene.background = new THREE.Color(0x0a0a1a); 
+      scene.fog = new THREE.FogExp2(0x0a0a1a, 0.02);
+      scene.fog = new THREE.Fog(0x0a0a1a, 10, 100);
+    }
   } else {
-    scene.background = new THREE.Color(0x87ceeb);
-    scene.fog = new THREE.Fog(0x90c8ff, 10, 100);
-
     isNight = false;
+    if (customLevel) {
+      const themeName = customLevel.theme || 'default';
+      const theme = levelThemes[themeName] || levelThemes['default'];
+      scene.background = new THREE.Color(theme.skyColor);
+      scene.fog = new THREE.Fog(theme.fogColor, 20, 120);
+    } else {
+      scene.background = new THREE.Color(0x87ceeb);
+      scene.fog = new THREE.Fog(0x90c8ff, 10, 100);
+    }
   }
   zombiesKilledThisRound = 0;
   totalZombiesSpawnedThisRound = 0;
@@ -1280,13 +1303,27 @@ function onZombieKilled() {
 }
 
 function spawnZombie() {
-  // Always try to max out zombies on screen (as long as there are buildings)
-  if (zombies.length >= currentMaxZombies || buildings.length == 0 || currentRound === 0) {
+  // Always try to max out zombies on screen
+  // In custom levels with a target, zombies don't need buildings to spawn
+  const needsBuildings = !customLevel || !customLevelRuntime.target;
+  if (zombies.length >= currentMaxZombies || (needsBuildings && buildings.length == 0) || currentRound === 0) {
     return;
   }
   
   const stats = getZombieStatsForRound();
-  const zombie = new Zombie(-60, getRandomInRange(-15, 15), stats.speed, stats.health, stats.damage);
+
+  let spawnX, spawnZ;
+  if (customLevel && customLevelRuntime.spawner) {
+    // Spawn at the custom spawner position (with slight random offset)
+    const cs = gridConfig.cellSize;
+    spawnX = customLevelRuntime.spawner.gx * cs + cs / 2 + getRandomInRange(-1, 1);
+    spawnZ = customLevelRuntime.spawner.gz * cs + cs / 2 + getRandomInRange(-1, 1);
+  } else {
+    spawnX = -60;
+    spawnZ = getRandomInRange(-15, 15);
+  }
+
+  const zombie = new Zombie(spawnX, spawnZ, stats.speed, stats.health, stats.damage);
   zombie.findTarget();
   
   zombies.push(zombie);
@@ -1327,7 +1364,8 @@ function gameLoop(timestamp) {
   if (spawnAccumulator >= 1000) {
     spawnAccumulator -= 1000;
     // Spawn zombies until we reach max capacity
-    while (zombies.length < currentMaxZombies && buildings.length > 0 && currentRound > 0) {
+    const canSpawnWithoutBuildings = customLevel && customLevelRuntime.target;
+    while (zombies.length < currentMaxZombies && (buildings.length > 0 || canSpawnWithoutBuildings) && currentRound > 0) {
       spawnZombie();
     }
   }
@@ -1721,15 +1759,22 @@ function gridToWorld(gridX, gridZ) {
  * Check if grid coordinates are valid
  */
 function isValidGridPos(gridX, gridZ) {
-  return gridX >= 0 && gridX < gridConfig.gridWidth && 
-         gridZ >= 0 && gridZ < gridConfig.gridHeight;
+  if (gridX < 0 || gridX >= gridConfig.gridWidth || gridZ < 0 || gridZ >= gridConfig.gridHeight) return false;
+  if (customLevel && customLevelRuntime.groundSet) {
+    return customLevelRuntime.groundSet.has(`${gridX},${gridZ}`);
+  }
+  return true;
 }
 
 /**
  * Check if a grid cell is empty
  */
 function isCellEmpty(gridX, gridZ) {
-  return isValidGridPos(gridX, gridZ) && grid[gridX][gridZ] === null;
+  if (!isValidGridPos(gridX, gridZ)) return false;
+  if (customLevel && customLevelRuntime.placeableSet) {
+    if (!customLevelRuntime.placeableSet.has(`${gridX},${gridZ}`)) return false;
+  }
+  return grid[gridX][gridZ] === null;
 }
 
 // ============================================
@@ -1773,7 +1818,7 @@ function updateGridRings() {
   if (buildMode) {
     gridRingsGroup.children.forEach(ring => {
       const { gridX, gridZ } = ring.userData;
-      const isEmpty = grid[gridX][gridZ] === null;
+      const isEmpty = grid[gridX] && grid[gridX][gridZ] === null;
       
       if (isEmpty) {
         ring.material.color.setHex(0x00ffff); // Cyan for empty
@@ -1934,28 +1979,80 @@ function Zombie(x, z, speed, health = 100, damage = 0.5) {
     scene.add(this.mesh);
   }
 
+  // Custom level path-following state
+  this.pathWaypoints = null;  // Array of {x, z} world positions to walk through
+  this.currentWaypoint = 0;
+  this.reachedTarget = false; // True when zombie reached the final target
+
   this.findTarget = function findTarget() {
     let targetX = 0;
     let targetZ = 0;
-    
-    if(buildings.length == 0){
-      targetX = 15;
-      targetZ = 0;
+
+    if (customLevel && customLevelRuntime.pathList && customLevelRuntime.pathList.length > 0) {
+      // Custom level with path: build ordered waypoints from path cells
+      if (!this.pathWaypoints) {
+        const cs = gridConfig.cellSize;
+        this.pathWaypoints = customLevelRuntime.pathList.map(c => ({
+          x: c.gx * cs + cs / 2,
+          z: c.gz * cs + cs / 2,
+        }));
+        // Add the target as final waypoint
+        if (customLevelRuntime.target) {
+          this.pathWaypoints.push({
+            x: customLevelRuntime.targetWorldX,
+            z: customLevelRuntime.targetWorldZ,
+          });
+        }
+        this.currentWaypoint = 0;
+      }
+
+      // Navigate to current waypoint
+      if (this.currentWaypoint < this.pathWaypoints.length) {
+        const wp = this.pathWaypoints[this.currentWaypoint];
+        targetX = wp.x;
+        targetZ = wp.z;
+      } else {
+        // Reached end
+        this.reachedTarget = true;
+        this.vX = 0;
+        this.vZ = 0;
+        return;
+      }
+    } else if (customLevel && customLevelRuntime.target && (!customLevelRuntime.pathList || customLevelRuntime.pathList.length === 0)) {
+      // Custom level with target but no path: go for buildings first, then target
+      if (buildings.length > 0) {
+        const randBuilding = buildings[Math.round(getRandomInRange(0, buildings.length - 1))];
+        if (randBuilding) {
+          this.targetBuilding = randBuilding;
+          targetX = randBuilding.x;
+          targetZ = randBuilding.z;
+        }
+      } else {
+        targetX = customLevelRuntime.targetWorldX;
+        targetZ = customLevelRuntime.targetWorldZ;
+      }
     } else {
-      const randBuilding = buildings[Math.round(getRandomInRange(0, buildings.length - 1))];
-      if(randBuilding){
-        this.targetBuilding = randBuilding;
-        targetX = randBuilding.x;
-        targetZ = randBuilding.z;
+      // Normal game: target buildings
+      if (buildings.length == 0) {
+        targetX = 15;
+        targetZ = 0;
+      } else {
+        const randBuilding = buildings[Math.round(getRandomInRange(0, buildings.length - 1))];
+        if (randBuilding) {
+          this.targetBuilding = randBuilding;
+          targetX = randBuilding.x;
+          targetZ = randBuilding.z;
+        }
       }
     }
 
     let xDiff = (targetX - this.x);
     let zDiff = (targetZ - this.z);
     const vectorMagnitude = Math.sqrt(xDiff * xDiff + zDiff * zDiff);
-
-    this.vX = xDiff / vectorMagnitude;
-    this.vZ = zDiff / vectorMagnitude;
+    if (vectorMagnitude > 0.01) {
+      this.vX = xDiff / vectorMagnitude;
+      this.vZ = zDiff / vectorMagnitude;
+    }
   }
 
   this.update = function update(dt) {
@@ -2043,6 +2140,66 @@ function Zombie(x, z, speed, health = 100, damage = 0.5) {
           }
         }
       }
+    } else if (customLevel && this.pathWaypoints && this.pathWaypoints.length > 0) {
+      // Custom level path-following logic
+      if (this.reachedTarget) {
+        // At the target — damage player health
+        this.vX = 0;
+        this.vZ = 0;
+        if (playerHealth > 0 && !powerUpState.shieldActive) {
+          playerHealth -= this.damage * dt;
+          triggerDamageFlash();
+        }
+      } else if (this.currentWaypoint < this.pathWaypoints.length) {
+        const wp = this.pathWaypoints[this.currentWaypoint];
+        const dx = wp.x - this.x;
+        const dz = wp.z - this.z;
+        const dist = Math.sqrt(dx * dx + dz * dz);
+
+        if (dist < 1.5) {
+          // Check for buildings on path blocks that are close enough to attack
+          let foundBuildingOnPath = false;
+          if (customLevel && customLevelRuntime.pathSet) {
+            for (let i = 0; i < buildings.length; i++) {
+              const b = buildings[i];
+              if (b.health <= 0) continue;
+              const bKey = `${b.gridX},${b.gridZ}`;
+              if (!customLevelRuntime.pathSet.has(bKey)) continue;
+              const bDx = b.x - this.x;
+              const bDz = b.z - this.z;
+              const bDist = Math.sqrt(bDx * bDx + bDz * bDz);
+              if (bDist < 3) {
+                this.targetBuilding = b;
+                this.vX = 0;
+                this.vZ = 0;
+                foundBuildingOnPath = true;
+                break;
+              }
+            }
+          }
+
+          if (!foundBuildingOnPath) {
+            // Move to next waypoint
+            this.currentWaypoint++;
+            this.findTarget();
+          }
+        }
+      }
+    } else if (customLevel && customLevelRuntime.target) {
+      // Custom level without path — going for target after no buildings
+      const dx = customLevelRuntime.targetWorldX - this.x;
+      const dz = customLevelRuntime.targetWorldZ - this.z;
+      const dist = Math.sqrt(dx * dx + dz * dz);
+      if (dist < 2) {
+        this.vX = 0;
+        this.vZ = 0;
+        if (playerHealth > 0 && !powerUpState.shieldActive) {
+          playerHealth -= this.damage * dt;
+          triggerDamageFlash();
+        }
+      } else {
+        this.findTarget();
+      }
     } else{
       if(this.x > 15 || this.x < -15 || this.z > 15 || this.z < -15){
         this.vX = 0;
@@ -2094,6 +2251,11 @@ function BigZombie(x, z) {
   this.isBigZombie = true;
 
   this.targetBuilding = null;
+
+  // Custom level path-following state (same as regular zombie)
+  this.pathWaypoints = null;
+  this.currentWaypoint = 0;
+  this.reachedTarget = false;
 
   // Animation state
   this.animTime = Math.random() * Math.PI * 2;
@@ -2158,24 +2320,64 @@ function BigZombie(x, z) {
     let targetX = 0;
     let targetZ = 0;
 
-    if (buildings.length == 0) {
-      targetX = 15;
-      targetZ = 0;
+    if (customLevel && customLevelRuntime.pathList && customLevelRuntime.pathList.length > 0) {
+      if (!this.pathWaypoints) {
+        const cs = gridConfig.cellSize;
+        this.pathWaypoints = customLevelRuntime.pathList.map(c => ({
+          x: c.gx * cs + cs / 2,
+          z: c.gz * cs + cs / 2,
+        }));
+        if (customLevelRuntime.target) {
+          this.pathWaypoints.push({
+            x: customLevelRuntime.targetWorldX,
+            z: customLevelRuntime.targetWorldZ,
+          });
+        }
+        this.currentWaypoint = 0;
+      }
+      if (this.currentWaypoint < this.pathWaypoints.length) {
+        const wp = this.pathWaypoints[this.currentWaypoint];
+        targetX = wp.x;
+        targetZ = wp.z;
+      } else {
+        this.reachedTarget = true;
+        this.vX = 0;
+        this.vZ = 0;
+        return;
+      }
+    } else if (customLevel && customLevelRuntime.target && (!customLevelRuntime.pathList || customLevelRuntime.pathList.length === 0)) {
+      if (buildings.length > 0) {
+        const randBuilding = buildings[Math.round(getRandomInRange(0, buildings.length - 1))];
+        if (randBuilding) {
+          this.targetBuilding = randBuilding;
+          targetX = randBuilding.x;
+          targetZ = randBuilding.z;
+        }
+      } else {
+        targetX = customLevelRuntime.targetWorldX;
+        targetZ = customLevelRuntime.targetWorldZ;
+      }
     } else {
-      const randBuilding = buildings[Math.round(getRandomInRange(0, buildings.length - 1))];
-      if (randBuilding) {
-        this.targetBuilding = randBuilding;
-        targetX = randBuilding.x;
-        targetZ = randBuilding.z;
+      if (buildings.length == 0) {
+        targetX = 15;
+        targetZ = 0;
+      } else {
+        const randBuilding = buildings[Math.round(getRandomInRange(0, buildings.length - 1))];
+        if (randBuilding) {
+          this.targetBuilding = randBuilding;
+          targetX = randBuilding.x;
+          targetZ = randBuilding.z;
+        }
       }
     }
 
     let xDiff = (targetX - this.x);
     let zDiff = (targetZ - this.z);
     const vectorMagnitude = Math.sqrt(xDiff * xDiff + zDiff * zDiff);
-
-    this.vX = xDiff / vectorMagnitude;
-    this.vZ = zDiff / vectorMagnitude;
+    if (vectorMagnitude > 0.01) {
+      this.vX = xDiff / vectorMagnitude;
+      this.vZ = zDiff / vectorMagnitude;
+    }
   }
 
   this.update = function update(dt) {
@@ -2256,6 +2458,59 @@ function BigZombie(x, z) {
           }
         }
       }
+    } else if (customLevel && this.pathWaypoints && this.pathWaypoints.length > 0) {
+      if (this.reachedTarget) {
+        this.vX = 0;
+        this.vZ = 0;
+        if (playerHealth > 0 && !powerUpState.shieldActive) {
+          playerHealth -= this.damage * dt;
+          triggerDamageFlash();
+        }
+      } else if (this.currentWaypoint < this.pathWaypoints.length) {
+        const wp = this.pathWaypoints[this.currentWaypoint];
+        const dx = wp.x - this.x;
+        const dz = wp.z - this.z;
+        const dist = Math.sqrt(dx * dx + dz * dz);
+        if (dist < 2) {
+          let foundBuildingOnPath = false;
+          if (customLevelRuntime.pathSet) {
+            for (let i = 0; i < buildings.length; i++) {
+              const b = buildings[i];
+              if (b.health <= 0) continue;
+              const bKey = `${b.gridX},${b.gridZ}`;
+              if (!customLevelRuntime.pathSet.has(bKey)) continue;
+              const bDx = b.x - this.x;
+              const bDz = b.z - this.z;
+              const bDist = Math.sqrt(bDx * bDx + bDz * bDz);
+              if (bDist < 4) {
+                this.targetBuilding = b;
+                this.vX = 0;
+                this.vZ = 0;
+                foundBuildingOnPath = true;
+                break;
+              }
+            }
+          }
+          if (!foundBuildingOnPath) {
+            this.currentWaypoint++;
+            this.findTarget();
+          }
+        }
+      }
+    } else if (customLevel && customLevelRuntime.target) {
+      const dx = customLevelRuntime.targetWorldX - this.x;
+      const dz = customLevelRuntime.targetWorldZ - this.z;
+      const dist = Math.sqrt(dx * dx + dz * dz);
+      if (dist < 2) {
+        this.vX = 0;
+        this.vZ = 0;
+        if (playerHealth > 0 && !powerUpState.shieldActive) {
+          playerHealth -= this.damage * dt;
+          triggerDamageFlash();
+        }
+      } else {
+        this.findTarget();
+      }
     } else {
       if (this.x > 15 || this.x < -15 || this.z > 15 || this.z < -15) {
         this.vX = 0;
@@ -2293,7 +2548,16 @@ function BigZombie(x, z) {
 }
 
 function spawnBigZombie() {
-  const bz = new BigZombie(-65, getRandomInRange(-10, 10));
+  let spawnX, spawnZ;
+  if (customLevel && customLevelRuntime.spawner) {
+    const cs = gridConfig.cellSize;
+    spawnX = customLevelRuntime.spawner.gx * cs + cs / 2 + getRandomInRange(-1, 1);
+    spawnZ = customLevelRuntime.spawner.gz * cs + cs / 2 + getRandomInRange(-1, 1);
+  } else {
+    spawnX = -65;
+    spawnZ = getRandomInRange(-10, 10);
+  }
+  const bz = new BigZombie(spawnX, spawnZ);
   bz.findTarget();
   bigZombies.push(bz);
   console.log('BIG ZOMBIE spawned!');
@@ -2789,6 +3053,74 @@ function makeTextTexture(text, fontSize, fgColor, bgColor, w, h) {
   return tex;
 }
 
+// Global references for hiding in custom levels
+let powerUpShopGroup = null;
+let upgradeShopGroup = null;
+let mapModelRef = null;
+
+// ============================================
+// Level Themes for Custom Levels
+// ============================================
+
+const levelThemes = {
+  default: {
+    skyColor: 0x90c8ff,
+    fogColor: 0x90c8ff,
+    groundColor: 0x4a9a4a,
+    ambientColor: 0x8899aa,
+    ambientIntensity: 0.6,
+    pathTint: null,
+  },
+  winter: {
+    skyColor: 0xc8ddef,
+    fogColor: 0xc8ddef,
+    groundColor: 0xd8e8f0,
+    ambientColor: 0xaabbdd,
+    ambientIntensity: 0.7,
+    pathTint: 0xbbccdd,
+  },
+  halloween: {
+    skyColor: 0x1a0a2e,
+    fogColor: 0x1a0a2e,
+    groundColor: 0x2a3a1a,
+    ambientColor: 0x553388,
+    ambientIntensity: 0.4,
+    pathTint: 0x553322,
+  },
+  christmas: {
+    skyColor: 0x1a2a4a,
+    fogColor: 0x1a2a4a,
+    groundColor: 0xd0e8d0,
+    ambientColor: 0x8899aa,
+    ambientIntensity: 0.5,
+    pathTint: 0xcc4444,
+  },
+  desert: {
+    skyColor: 0xf5c87a,
+    fogColor: 0xf5c87a,
+    groundColor: 0xd4a55a,
+    ambientColor: 0xddaa66,
+    ambientIntensity: 0.8,
+    pathTint: 0xbb9944,
+  },
+  night: {
+    skyColor: 0x0a0a1a,
+    fogColor: 0x0a0a1a,
+    groundColor: 0x1a3a1a,
+    ambientColor: 0x223344,
+    ambientIntensity: 0.3,
+    pathTint: 0x222222,
+  },
+  ocean: {
+    skyColor: 0x2a6e9e,
+    fogColor: 0x2a6e9e,
+    groundColor: 0x3a8a6a,
+    ambientColor: 0x44aacc,
+    ambientIntensity: 0.6,
+    pathTint: 0x2266aa,
+  },
+};
+
 function createPowerUpShop() {
   const shopGroup = new THREE.Group();
 
@@ -2907,6 +3239,7 @@ function createPowerUpShop() {
   shopGroup.position.set(0, 0, -(gridConfig.totalHeight / 2 + 1.5));
   shopGroup.rotation.y = 0; // Face towards camera
 
+  powerUpShopGroup = shopGroup;
   scene.add(shopGroup);
 }
 
@@ -3030,6 +3363,7 @@ function createUpgradeShop() {
   shopGroup.position.set(5, 0, -(gridConfig.totalHeight / 2 + 1.5));
   shopGroup.rotation.y = 0; // Face towards camera
 
+  upgradeShopGroup = shopGroup;
   scene.add(shopGroup);
 }
 
@@ -3043,6 +3377,7 @@ const levelEditor = (() => {
   const cellSize = 3; // Same cell size as the game
   let pathColor = '#cc8844';
   let tool = 'draw'; // 'draw' | 'erase' | 'grass' | 'spawner' | 'target' | 'placeable'
+  let selectedTheme = 'default';
 
   // Ground cells: Set of "x,z" keys — freeform shape
   const groundCells = new Map(); // "x,z" -> Mesh
@@ -3668,7 +4003,14 @@ const levelEditor = (() => {
     document.getElementById('editor-none-placeable').onclick = () => makeNonePlaceable();
     document.getElementById('editor-path-color').oninput = (e) => { pathColor = e.target.value; };
     document.getElementById('editor-clear-btn').onclick = () => clearAllPaths();
+    document.getElementById('editor-theme-select').onchange = (e) => { selectedTheme = e.target.value; applyEditorThemePreview(e.target.value); };
+    document.getElementById('editor-play-btn').onclick = () => playLevel();
     document.getElementById('editor-back-btn').onclick = () => stop();
+
+    // Reset theme selector
+    selectedTheme = 'default';
+    document.getElementById('editor-theme-select').value = 'default';
+    applyEditorThemePreview('default');
 
     setTool('draw');
 
@@ -3705,8 +4047,276 @@ const levelEditor = (() => {
     renderer.render(scene, camera);
   }
 
-  return { start, stop, get active() { return active; } };
+  // --- Export level data ---
+  function exportLevel() {
+    const data = {
+      groundCells: [],
+      pathCells: [],
+      spawner: spawnerCell ? { gx: spawnerCell.gx, gz: spawnerCell.gz } : null,
+      target: targetCell ? { gx: targetCell.gx, gz: targetCell.gz } : null,
+      placeableCells: [],
+      theme: selectedTheme,
+    };
+    for (const [key] of groundCells) {
+      const [gx, gz] = key.split(',').map(Number);
+      data.groundCells.push({ gx, gz });
+    }
+    for (const [key, entry] of pathCells) {
+      const [gx, gz] = key.split(',').map(Number);
+      data.pathCells.push({ gx, gz, color: entry.color });
+    }
+    for (const [key] of placeableCells) {
+      const [gx, gz] = key.split(',').map(Number);
+      data.placeableCells.push({ gx, gz });
+    }
+    return data;
+  }
+
+  // --- Play the created level ---
+  function playLevel() {
+    const levelData = exportLevel();
+    if (levelData.groundCells.length === 0) {
+      alert('Add some ground tiles first!');
+      return;
+    }
+
+    // Store as custom level
+    customLevel = levelData;
+
+    // Stop editor
+    active = false;
+    if (editorAnimId) cancelAnimationFrame(editorAnimId);
+    editorAnimId = null;
+
+    window.removeEventListener('mousedown', handlers.mousedown);
+    window.removeEventListener('mousemove', handlers.mousemove);
+    window.removeEventListener('mouseup', handlers.mouseup);
+    window.removeEventListener('wheel', handlers.wheel);
+    window.removeEventListener('keydown', handlers.keydown, true);
+    window.removeEventListener('keyup', handlers.keyup);
+    window.removeEventListener('contextmenu', handlers.contextmenu);
+
+    cleanupEditorObjects();
+    showGameObjects();
+
+    document.getElementById('level-editor-ui').style.display = 'none';
+
+    // Setup custom ground, grid, etc then start gameplay
+    setupCustomLevel(customLevel);
+  }
+
+  // Preview theme in editor
+  function applyEditorThemePreview(themeName) {
+    const t = levelThemes[themeName] || levelThemes['default'];
+    scene.background = new THREE.Color(t.skyColor);
+    if (t.fogColor) {
+      scene.fog = new THREE.Fog(t.fogColor, 20, 120);
+    } else {
+      scene.fog = null;
+    }
+    // Tint ground cells with theme ground color
+    for (const [, mesh] of groundCells) {
+      mesh.material.color.set(t.groundColor);
+    }
+  }
+
+  return { start, stop, playLevel, exportLevel, get active() { return active; } };
 })();
+
+// ============================================
+// Custom Level Setup
+// ============================================
+
+const customLevelRuntime = {
+  groundSet: null,
+  pathSet: null,
+  placeableSet: null,
+  pathList: null,
+  spawner: null,
+  target: null,
+  targetWorldX: 0,
+  targetWorldZ: 0,
+  customGroundMeshes: [],
+  customPathMeshes: [],
+  customMarkerMeshes: [],
+};
+
+function setupCustomLevel(level) {
+  const cs = gridConfig.cellSize;
+
+  // Hide default map objects — custom levels don't use them
+  if (powerUpShopGroup) powerUpShopGroup.visible = false;
+  if (upgradeShopGroup) upgradeShopGroup.visible = false;
+  if (mapModelRef) mapModelRef.visible = false;
+  if (shieldMesh) shieldMesh.visible = false;
+
+  // Apply theme
+  const themeName = level.theme || 'default';
+  const theme = levelThemes[themeName] || levelThemes['default'];
+
+  scene.background = new THREE.Color(theme.skyColor);
+  if (theme.fogColor) {
+    scene.fog = new THREE.Fog(theme.fogColor, 20, 120);
+  } else {
+    scene.fog = null;
+  }
+
+  // Update ambient & directional light for theme
+  scene.traverse((child) => {
+    if (child.isAmbientLight) {
+      child.color.set(theme.ambientColor);
+      child.intensity = theme.ambientIntensity;
+    }
+  });
+
+  let minGx = Infinity, maxGx = -Infinity, minGz = Infinity, maxGz = -Infinity;
+  for (const c of level.groundCells) {
+    if (c.gx < minGx) minGx = c.gx;
+    if (c.gx > maxGx) maxGx = c.gx;
+    if (c.gz < minGz) minGz = c.gz;
+    if (c.gz > maxGz) maxGz = c.gz;
+  }
+
+  const gw = maxGx - minGx + 1;
+  const gh = maxGz - minGz + 1;
+  gridConfig.gridWidth = gw;
+  gridConfig.gridHeight = gh;
+  gridConfig._customOffsetGx = minGx;
+  gridConfig._customOffsetGz = minGz;
+  gridConfig._customOffsetX = minGx * cs;
+  gridConfig._customOffsetZ = minGz * cs;
+
+  grid.length = 0;
+  for (let x = 0; x < gw; x++) {
+    grid[x] = [];
+    for (let z = 0; z < gh; z++) {
+      grid[x][z] = null;
+    }
+  }
+
+  customLevelRuntime.groundSet = new Set();
+  customLevelRuntime.pathSet = new Set();
+  customLevelRuntime.placeableSet = new Set();
+  customLevelRuntime.pathList = level.pathCells;
+  customLevelRuntime.spawner = level.spawner;
+  customLevelRuntime.target = level.target;
+
+  for (const c of level.groundCells) {
+    customLevelRuntime.groundSet.add(`${c.gx - minGx},${c.gz - minGz}`);
+  }
+  for (const c of level.pathCells) {
+    customLevelRuntime.pathSet.add(`${c.gx - minGx},${c.gz - minGz}`);
+  }
+  for (const c of level.placeableCells) {
+    customLevelRuntime.placeableSet.add(`${c.gx - minGx},${c.gz - minGz}`);
+  }
+
+  ground.visible = false;
+  for (const c of level.groundCells) {
+    const geo = new THREE.PlaneGeometry(cs, cs);
+    const mat = new THREE.MeshStandardMaterial({ color: theme.groundColor, roughness: 0.8, metalness: 0.1 });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.position.set(c.gx * cs + cs / 2, -0.01, c.gz * cs + cs / 2);
+    mesh.receiveShadow = true;
+    scene.add(mesh);
+    customLevelRuntime.customGroundMeshes.push(mesh);
+  }
+
+  for (const c of level.pathCells) {
+    const geo = new THREE.PlaneGeometry(cs * 0.96, cs * 0.96);
+    const pathCol = theme.pathTint || c.color;
+    const mat = new THREE.MeshStandardMaterial({ color: pathCol, roughness: 0.7, transparent: true, opacity: 0.85 });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.position.set(c.gx * cs + cs / 2, 0.02, c.gz * cs + cs / 2);
+    scene.add(mesh);
+    customLevelRuntime.customPathMeshes.push(mesh);
+  }
+
+  if (level.spawner) {
+    const geo = new THREE.PlaneGeometry(cs * 0.92, cs * 0.92);
+    const mat = new THREE.MeshStandardMaterial({ color: 0xcc2222, roughness: 0.5, transparent: true, opacity: 0.6 });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.position.set(level.spawner.gx * cs + cs / 2, 0.03, level.spawner.gz * cs + cs / 2);
+    scene.add(mesh);
+    customLevelRuntime.customMarkerMeshes.push(mesh);
+  }
+
+  if (level.target) {
+    const geo = new THREE.PlaneGeometry(cs * 0.92, cs * 0.92);
+    const mat = new THREE.MeshStandardMaterial({ color: 0x22aadd, roughness: 0.5, transparent: true, opacity: 0.6 });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.position.set(level.target.gx * cs + cs / 2, 0.03, level.target.gz * cs + cs / 2);
+    scene.add(mesh);
+    customLevelRuntime.customMarkerMeshes.push(mesh);
+
+    customLevelRuntime.targetWorldX = level.target.gx * cs + cs / 2;
+    customLevelRuntime.targetWorldZ = level.target.gz * cs + cs / 2;
+  }
+
+  // Rebuild grid rings for custom level
+  while (gridRingsGroup.children.length > 0) {
+    const c = gridRingsGroup.children[0];
+    gridRingsGroup.remove(c);
+    if (c.geometry) c.geometry.dispose();
+    if (c.material) c.material.dispose();
+  }
+  for (let x = 0; x < gw; x++) {
+    for (let z = 0; z < gh; z++) {
+      const key = `${x},${z}`;
+      if (!customLevelRuntime.groundSet.has(key)) continue;
+      if (!customLevelRuntime.placeableSet.has(key)) continue;
+      const ring = new THREE.Mesh(ringGeometry, ringMaterial.clone());
+      const worldPos = gridToWorld(x, z);
+      ring.position.set(worldPos.x, 0.02, worldPos.z);
+      ring.rotation.x = -Math.PI / 2;
+      ring.userData.gridX = x;
+      ring.userData.gridZ = z;
+      gridRingsGroup.add(ring);
+    }
+  }
+
+  // Resize raycasting ground
+  const totalW = gw * cs + 20;
+  const totalH = gh * cs + 20;
+  ground.geometry.dispose();
+  ground.geometry = new THREE.PlaneGeometry(totalW, totalH);
+  ground.position.set(
+    gridConfig.offsetX + gw * cs / 2,
+    -0.02,
+    gridConfig.offsetZ + gh * cs / 2
+  );
+  // Keep ground for raycasting but invisible (custom tiles are visible)
+  ground.material.opacity = 0;
+  ground.material.transparent = true;
+  ground.visible = true;
+
+  // Camera
+  const centerX = gridConfig.offsetX + gw * cs / 2;
+  const centerZ = gridConfig.offsetZ + gh * cs / 2;
+  const camHeight = Math.max(gw, gh) * cs * 0.7 + 10;
+  defaultCameraPos.x = centerX;
+  defaultCameraPos.y = camHeight;
+  defaultCameraPos.z = centerZ + camHeight * 0.5;
+  buildModeCameraPos.x = centerX;
+  buildModeCameraPos.y = camHeight + 10;
+  buildModeCameraPos.z = centerZ + 0.1;
+
+  camera.position.set(defaultCameraPos.x, defaultCameraPos.y, defaultCameraPos.z);
+  camera.lookAt(centerX, 0, centerZ);
+
+  // Theme sky/fog already applied above
+
+  // Start gameplay directly (skip cutscene)
+  if (ui.container) ui.container.style.display = 'flex';
+  gameStarted = true;
+  lastFrameTime = 0;
+  spawnAccumulator = 0;
+  requestAnimationFrame(gameLoop);
+}
 
 // ============================================
 // Game Initialization
@@ -3961,6 +4571,7 @@ async function initGame() {
       }
     });
     
+    mapModelRef = mapModel;
     scene.add(mapModel);
   }
   
