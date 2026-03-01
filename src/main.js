@@ -919,8 +919,9 @@ const ui = {
         powerUpState.instaKillActive = true;
         powerUpState.instaKillTimer = 10000;
         powerUpState.instaKillCooldown = 60000;
-        // Set all current zombies to 1 health
+        // Set all current zombies to 1 health (big zombies to 10% HP)
         zombies.forEach(z => { z.health = Math.min(z.health, 1); });
+        bigZombies.forEach(z => { z.health = Math.min(z.health, Math.round(z.maxHealth * 0.1)); });
         console.log('Insta Kill! All zombies set to 1 HP for 10s.');
         break;
       case 'surge':
@@ -1168,6 +1169,11 @@ function startRound() {
   
   SoundManager.play('newRound');
   console.log(`Round ${currentRound} started! Kill ${zombiesToKillThisRound} zombies. Max on screen: ${currentMaxZombies}`);
+  
+  // Spawn a big zombie starting at round 5, then every 5 rounds
+  if (currentRound >= 5 && currentRound % 5 === 0) {
+    spawnBigZombie();
+  }
 }
 
 /**
@@ -1259,6 +1265,10 @@ function gameLoop(timestamp) {
   
   for(let i = 0; i < zombies.length; i++){
     zombies[i].update(dt);
+  }
+
+  for(let i = 0; i < bigZombies.length; i++){
+    bigZombies[i].update(dt);
   }
 
   for(let i = 0; i < buildings.length; i++){
@@ -1530,11 +1540,11 @@ window.addEventListener("keydown", (e)=>{
   
   // Building hotkeys (only work in build mode)
   if (buildMode) {
-    if (e.key === '1') ui.selectBuilding('solarPanel', 200);
-    if (e.key === '2') ui.selectBuilding('windTurbine', 300);
+    if (e.key === '1') ui.selectBuilding('solarPanel', 100);
+    if (e.key === '2') ui.selectBuilding('windTurbine', 200);
     if (e.key === '3') ui.selectBuilding('powerPlant', 600);
     if (e.key === '4') ui.selectBuilding('turret', 400);
-    if (e.key === '5') ui.selectBuilding('missileTurret', 800);
+    if (e.key === '5') ui.selectBuilding('missileTurret', 600);
   }
 
   // Power-up hotkeys (only work in power-up mode)
@@ -1944,6 +1954,229 @@ function Zombie(x, z, speed, health = 100, damage = 0.5) {
 }
 
 // ============================================
+// Big Zombie (Boss Zombie)
+// ============================================
+
+let bigZombies = [];
+
+function BigZombie(x, z) {
+  this.x = x;
+  this.z = z;
+  this.vX = 0;
+  this.vZ = 0;
+  this.speed = 0.12;           // Much slower than regular zombies (0.5)
+  this.maxHealth = 2000;       // A LOT more health
+  this.health = this.maxHealth;
+  this.damage = 2.0;           // Hits harder too
+  this.isBigZombie = true;
+
+  this.targetBuilding = null;
+
+  // Animation state
+  this.animTime = Math.random() * Math.PI * 2;
+  this.isMoving = false;
+  this.isAttacking = false;
+  this.innerModel = null;
+
+  // Use the same zombie model but scaled up
+  const zombieModel = modelLoader.getSync('zombie');
+  if (zombieModel) {
+    zombieModel.scale.setScalar(0.6); // 3x the normal zombie size (0.2 -> 0.6)
+
+    const box = new THREE.Box3().setFromObject(zombieModel);
+    const center = box.getCenter(new THREE.Vector3());
+    const minY = box.min.y;
+
+    this.mesh = new THREE.Group();
+    zombieModel.position.set(-center.x, -minY, -center.z);
+    this.mesh.add(zombieModel);
+    this.innerModel = zombieModel;
+
+    // Give a slight forward lean
+    this.mesh.rotation.x = 0.1;
+
+    // Tint the big zombie a sickly green/dark color
+    zombieModel.traverse((child) => {
+      if (child.isMesh) {
+        child.material = child.material.clone();
+        child.material.color.multiplyScalar(0.5);
+        child.material.emissive = new THREE.Color(0x220000);
+        child.material.emissiveIntensity = 0.3;
+      }
+    });
+
+    this.mesh.position.set(x, 0, z);
+    scene.add(this.mesh);
+
+    // --- Health Bar ---
+    const barWidth = 4;
+    const barHeight = 0.35;
+    const bgGeo = new THREE.PlaneGeometry(barWidth, barHeight);
+    const bgMat = new THREE.MeshBasicMaterial({ color: 0x333333, depthTest: false, transparent: true, opacity: 0.7 });
+    this.healthBarBg = new THREE.Mesh(bgGeo, bgMat);
+    this.healthBarBg.renderOrder = 999;
+
+    const fgGeo = new THREE.PlaneGeometry(barWidth, barHeight);
+    const fgMat = new THREE.MeshBasicMaterial({ color: 0xff0000, depthTest: false, transparent: true, opacity: 0.9 });
+    this.healthBarFg = new THREE.Mesh(fgGeo, fgMat);
+    this.healthBarFg.renderOrder = 1000;
+
+    const modelBox = new THREE.Box3().setFromObject(this.mesh);
+    this.healthBarY = (modelBox.max.y - modelBox.min.y) + 0.8;
+
+    this.healthBarGroup = new THREE.Group();
+    this.healthBarGroup.position.set(x, this.healthBarY, z);
+    this.healthBarGroup.add(this.healthBarBg);
+    this.healthBarGroup.add(this.healthBarFg);
+    scene.add(this.healthBarGroup);
+  }
+
+  this.findTarget = function findTarget() {
+    let targetX = 0;
+    let targetZ = 0;
+
+    if (buildings.length == 0) {
+      targetX = 15;
+      targetZ = 0;
+    } else {
+      const randBuilding = buildings[Math.round(getRandomInRange(0, buildings.length - 1))];
+      if (randBuilding) {
+        this.targetBuilding = randBuilding;
+        targetX = randBuilding.x;
+        targetZ = randBuilding.z;
+      }
+    }
+
+    let xDiff = (targetX - this.x);
+    let zDiff = (targetZ - this.z);
+    const vectorMagnitude = Math.sqrt(xDiff * xDiff + zDiff * zDiff);
+
+    this.vX = xDiff / vectorMagnitude;
+    this.vZ = zDiff / vectorMagnitude;
+  }
+
+  this.update = function update(dt) {
+    if (!this.mesh) return;
+
+    if (this.health <= 0) {
+      this.destroy();
+      return;
+    }
+
+    this.x += this.vX * this.speed * dt;
+    this.z += this.vZ * this.speed * dt;
+    this.mesh.position.x = this.x;
+    this.mesh.position.z = this.z;
+
+    this.isMoving = (this.vX !== 0 || this.vZ !== 0);
+
+    if (this.isMoving) {
+      const targetAngle = Math.atan2(this.vX, this.vZ);
+      this.mesh.rotation.y = targetAngle;
+    }
+
+    // Procedural animation — slower, heavier feeling
+    if (this.innerModel) {
+      const walkSpeed = 4;
+      const attackSpeed = 3;
+
+      if (this.isMoving) {
+        this.animTime += 0.1 * dt;
+        this.isAttacking = false;
+        const t = this.animTime * walkSpeed;
+
+        this.mesh.position.y = Math.abs(Math.sin(t)) * 0.25;
+        this.innerModel.rotation.z = Math.sin(t) * 0.08;
+        this.innerModel.rotation.x = 0.15 + Math.sin(t * 2) * 0.04;
+        this.innerModel.rotation.y = Math.sin(t * 0.5) * 0.05;
+      } else {
+        this.isAttacking = true;
+        this.animTime += 0.08 * dt;
+        const t = this.animTime * attackSpeed;
+
+        this.mesh.position.y = 0;
+        this.innerModel.rotation.x = 0.1 + Math.sin(t) * 0.25;
+        this.innerModel.rotation.z = Math.sin(t * 0.7) * 0.08;
+        this.innerModel.rotation.y = 0;
+      }
+    }
+
+    // Update health bar
+    if (this.healthBarGroup) {
+      const pct = Math.max(0, this.health / this.maxHealth);
+      this.healthBarFg.scale.x = pct;
+      this.healthBarFg.position.x = -(1 - pct) * 2;
+
+      const r = pct < 0.5 ? 1 : 1 - (pct - 0.5) * 2;
+      const g = pct > 0.5 ? 1 : pct * 2;
+      this.healthBarFg.material.color.setRGB(r, g, 0);
+
+      this.healthBarGroup.quaternion.copy(camera.quaternion);
+      this.healthBarGroup.position.set(this.x, this.healthBarY, this.z);
+    }
+
+    // Building damage / retargeting
+    if (this.targetBuilding != null && this.targetBuilding != undefined) {
+      if (this.targetBuilding.health <= 0) {
+        this.targetBuilding = null;
+      } else {
+        let xDiff = this.targetBuilding.x - this.x;
+        let zDiff = this.targetBuilding.z - this.z;
+        let distanceToTarget = Math.sqrt(xDiff * xDiff + zDiff * zDiff);
+
+        if (distanceToTarget < 3) {
+          this.vX = 0;
+          this.vZ = 0;
+
+          if (!powerUpState.shieldActive) {
+            this.targetBuilding.health -= this.damage * dt;
+          }
+        }
+      }
+    } else {
+      if (this.x > 15 || this.x < -15 || this.z > 15 || this.z < -15) {
+        this.vX = 0;
+        this.vZ = 0;
+
+        if (playerHealth > 0 && !powerUpState.shieldActive) {
+          playerHealth -= this.damage * dt;
+        } else if (!powerUpState.shieldActive) {
+          triggerDamageFlash();
+          playerHealth = 0;
+        }
+      }
+
+      this.findTarget();
+    }
+  }
+
+  this.destroy = function destroy() {
+    if (this.mesh) {
+      scene.remove(this.mesh);
+    }
+    if (this.healthBarGroup) {
+      scene.remove(this.healthBarGroup);
+    }
+    SoundManager.play('splat');
+    SoundManager.play('explosion');
+    // Big zombie kill counts as 3 kills and gives bonus energy
+    onZombieKilled();
+    onZombieKilled();
+    onZombieKilled();
+    energy += 200;
+    const index = bigZombies.indexOf(this);
+    if (index > -1) bigZombies.splice(index, 1);
+  }
+}
+
+function spawnBigZombie() {
+  const bz = new BigZombie(-65, getRandomInRange(-10, 10));
+  bz.findTarget();
+  bigZombies.push(bz);
+  console.log('BIG ZOMBIE spawned!');
+}
+
+// ============================================
 // Building System for Tower Defense
 // ============================================
 
@@ -2070,7 +2303,9 @@ function Building(type, x, z, options = {}) {
   const turretUpgrade = upgradeState[type];
   const turretConfig = {
     turret: {
-      damage: 10 + (turretUpgrade ? turretUpgrade.level * turretUpgrade.bonus : 0),
+      
+      damage: 25 + (turretUpgrade ? turretUpgrade.level * turretUpgrade.bonus : 0),
+
       fireRate: 200,      // ms between shots
       range: 15,
       splashRadius: 0,    // no splash
@@ -2258,7 +2493,9 @@ function Building(type, x, z, options = {}) {
     let closest = null;
     let closestDist = Infinity;
     
-    for (const zombie of zombies) {
+    // Search both regular and big zombies
+    const allZombies = [...zombies, ...bigZombies];
+    for (const zombie of allZombies) {
       if (zombie.health <= 0) continue;
       
       const dist = this.getDistanceToZombie(zombie);
@@ -2294,7 +2531,8 @@ function Building(type, x, z, options = {}) {
     
     // Splash damage for missile turret
     if (this.turretStats.splashRadius > 0) {
-      for (const zombie of zombies) {
+      const allZombies = [...zombies, ...bigZombies];
+      for (const zombie of allZombies) {
         if (zombie === this.targetZombie) continue;
         if (zombie.health <= 0) continue;
         
