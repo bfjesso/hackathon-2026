@@ -17,7 +17,68 @@
       <div class="menu-title">Power Defense</div>
       <div class="menu-subtitle">Survive with clean energy</div>
       <button class="menu-btn" id="new-game-btn">New Game</button>
-      <button class="menu-btn" id="level-creator-btn" style="margin-top: 16px;">Level Creator</button>
+      <button class="menu-btn" id="level-manager-btn" style="margin-top: 16px;">Level Manager</button>
+    </div>
+
+    <!-- Level Manager Screen -->
+    <div id="level-manager" style="display:none;">
+      <div class="lm-header">
+        <div class="lm-title">Level Manager</div>
+        <div class="lm-header-actions">
+          <button class="menu-btn lm-new-btn" id="lm-new-level-btn">+ New Level</button>
+          <button class="menu-btn lm-back-btn" id="lm-back-btn">← Back</button>
+        </div>
+      </div>
+      <div class="lm-tabs">
+        <button class="lm-tab active" id="lm-tab-my">My Maps</button>
+        <button class="lm-tab" id="lm-tab-all">All Maps</button>
+      </div>
+      <div class="lm-content" id="lm-content">
+        <!-- Level cards will be injected here -->
+      </div>
+    </div>
+
+    <!-- Level Save Dialog (modal in editor) -->
+    <div id="level-save-dialog" style="display:none;">
+      <div class="save-dialog-backdrop"></div>
+      <div class="save-dialog-box">
+        <div class="save-dialog-title">Save Level</div>
+        <label class="save-label">Level Name
+          <input type="text" id="save-level-name" class="save-input" placeholder="My Awesome Map" maxlength="40" />
+        </label>
+        <label class="save-label">Creator Name
+          <input type="text" id="save-creator-name" class="save-input" placeholder="Anonymous" maxlength="24" />
+        </label>
+        <label class="save-label">Access
+          <select id="save-access-type" class="save-select">
+            <option value="public">🌐 Public — anyone can edit</option>
+            <option value="password">🔑 Password — edit with password</option>
+            <option value="private">🔒 Private — only you can edit</option>
+          </select>
+        </label>
+        <label class="save-label" id="save-password-row" style="display:none;">Edit Password
+          <input type="text" id="save-level-password" class="save-input" placeholder="Enter password" maxlength="32" />
+        </label>
+        <div class="save-dialog-actions">
+          <button class="menu-btn save-confirm-btn" id="save-confirm-btn">💾 Save</button>
+          <button class="menu-btn save-cancel-btn" id="save-cancel-btn">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Password Prompt Dialog -->
+    <div id="password-prompt-dialog" style="display:none;">
+      <div class="save-dialog-backdrop"></div>
+      <div class="save-dialog-box">
+        <div class="save-dialog-title">Enter Edit Password</div>
+        <label class="save-label">Password
+          <input type="text" id="prompt-password-input" class="save-input" placeholder="Enter password" maxlength="32" />
+        </label>
+        <div class="save-dialog-actions">
+          <button class="menu-btn save-confirm-btn" id="prompt-password-ok">Unlock</button>
+          <button class="menu-btn save-cancel-btn" id="prompt-password-cancel">Cancel</button>
+        </div>
+      </div>
     </div>
 
     <!-- Cutscene Overlay -->
@@ -89,6 +150,7 @@
           </div>
           <div class="editor-group editor-group-right">
             <div class="editor-group-items">
+              <button class="editor-btn editor-save-btn" id="editor-save-btn" title="Save level to library">💾 Save</button>
               <button class="editor-btn editor-play-btn" id="editor-play-btn" title="Save & Play this level">▶️ Play Level</button>
               <button class="editor-btn editor-back-btn" id="editor-back-btn">← Back</button>
             </div>

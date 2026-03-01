@@ -3959,12 +3959,14 @@ const levelEditor = (() => {
   }
 
   function onKeyDown(e) {
+    const tag = document.activeElement.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
     const k = e.key.toLowerCase();
     if (k in camState.keys) {
       camState.keys[k] = true;
       e.preventDefault();
     }
-    if (document.activeElement.tagName !== 'INPUT') {
+    if (true) {
       if (k === 'g') setTool('grass');
       if (k === 'q') setTool('draw');
       if (k === 'e') setTool('erase');
@@ -4070,11 +4072,76 @@ const levelEditor = (() => {
     }
   }
 
+  // Track the id of the level being edited (null = new level)
+  let editingLevelId = null;
+
+  // --- Import level data into the editor (for loading saved levels) ---
+  function importLevel(data) {
+    // Clear any existing editor objects
+    cleanupEditorObjects();
+
+    // Recreate raycast plane if needed
+    if (!raycastPlane) {
+      const rpGeo = new THREE.PlaneGeometry(600, 600);
+      const rpMat = new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide });
+      raycastPlane = new THREE.Mesh(rpGeo, rpMat);
+      raycastPlane.rotation.x = -Math.PI / 2;
+      raycastPlane.position.y = -0.01;
+      scene.add(raycastPlane);
+    }
+
+    // Rebuild ground cells
+    for (const c of data.groundCells) {
+      addGroundCell(c.gx, c.gz);
+    }
+
+    // Rebuild path cells
+    for (const c of data.pathCells) {
+      setPathCell(c.gx, c.gz, c.color);
+    }
+
+    // Set spawner
+    if (data.spawner) {
+      setSpawner(data.spawner.gx, data.spawner.gz);
+    }
+
+    // Set target
+    if (data.target) {
+      setTarget(data.target.gx, data.target.gz);
+    }
+
+    // Set placeable cells
+    for (const c of data.placeableCells) {
+      addPlaceable(c.gx, c.gz);
+    }
+
+    // Restore theme
+    if (data.theme) {
+      selectedTheme = data.theme;
+      document.getElementById('editor-theme-select').value = data.theme;
+      applyEditorThemePreview(data.theme);
+    }
+
+    // Restore build view
+    if (data.buildView) {
+      buildView = data.buildView;
+      document.getElementById('editor-buildview-select').value = data.buildView;
+      document.getElementById('editor-setview-btn').style.display = data.buildView === 'set' ? 'inline-block' : 'none';
+    }
+    if (data.buildCam) {
+      capturedBuildCam = { ...data.buildCam };
+    }
+
+    rebuildOutlines();
+  }
+
   // --- Public API ---
-  function start() {
+  function start(levelData, levelId) {
     active = true;
+    editingLevelId = levelId || null;
 
     document.getElementById('main-menu').style.display = 'none';
+    document.getElementById('level-manager').style.display = 'none';
     if (ui.container) ui.container.style.display = 'none';
     document.getElementById('level-editor-ui').style.display = 'block';
 
@@ -4091,8 +4158,13 @@ const levelEditor = (() => {
     raycastPlane.position.y = -0.01;
     scene.add(raycastPlane);
 
-    // Build default ground
-    buildInitialGround();
+    // If loading existing level data, import it; otherwise build default ground
+    if (levelData) {
+      importLevel(levelData);
+    } else {
+      // Build default ground
+      buildInitialGround();
+    }
 
     // Reset camera
     camState.targetX = 0;
@@ -4147,16 +4219,19 @@ const levelEditor = (() => {
       setTimeout(() => { document.getElementById('editor-setview-btn').textContent = '📷 Capture'; }, 1500);
     };
     document.getElementById('editor-play-btn').onclick = () => playLevel();
+    document.getElementById('editor-save-btn').onclick = () => openSaveDialog();
     document.getElementById('editor-back-btn').onclick = () => stop();
 
-    // Reset theme & build view selectors
-    selectedTheme = 'default';
-    document.getElementById('editor-theme-select').value = 'default';
-    applyEditorThemePreview('default');
-    buildView = 'free';
-    capturedBuildCam = null;
-    document.getElementById('editor-buildview-select').value = 'free';
-    document.getElementById('editor-setview-btn').style.display = 'none';
+    // Reset theme & build view selectors only for NEW levels (not when loading existing)
+    if (!levelData) {
+      selectedTheme = 'default';
+      document.getElementById('editor-theme-select').value = 'default';
+      applyEditorThemePreview('default');
+      buildView = 'free';
+      capturedBuildCam = null;
+      document.getElementById('editor-buildview-select').value = 'free';
+      document.getElementById('editor-setview-btn').style.display = 'none';
+    }
 
     setTool('draw');
 
@@ -4185,8 +4260,10 @@ const levelEditor = (() => {
     scene.fog = new THREE.Fog(0x90c8ff, 10, 100);
 
     document.getElementById('level-editor-ui').style.display = 'none';
-    document.getElementById('main-menu').style.display = 'flex';
-    document.getElementById('main-menu').style.opacity = '1';
+    // Return to level manager instead of main menu
+    levelManagerUI.show();
+
+    editingLevelId = null;
 
     camera.position.set(defaultCameraPos.x, defaultCameraPos.y, defaultCameraPos.z);
     camera.lookAt(0, 0, 0);
@@ -4268,7 +4345,338 @@ const levelEditor = (() => {
     }
   }
 
-  return { start, stop, playLevel, exportLevel, get active() { return active; } };
+  // --- Save dialog ---
+  function openSaveDialog() {
+    const dialog = document.getElementById('level-save-dialog');
+    const nameInput = document.getElementById('save-level-name');
+    const creatorInput = document.getElementById('save-creator-name');
+    const accessSelect = document.getElementById('save-access-type');
+    const passwordRow = document.getElementById('save-password-row');
+    const passwordInput = document.getElementById('save-level-password');
+
+    // Pre-fill if editing an existing level
+    if (editingLevelId) {
+      const existing = LevelStorage.get(editingLevelId);
+      if (existing) {
+        nameInput.value = existing.name || '';
+        creatorInput.value = existing.creator || '';
+        accessSelect.value = existing.access || 'public';
+        passwordInput.value = existing.password || '';
+        passwordRow.style.display = existing.access === 'password' ? '' : 'none';
+      }
+    } else {
+      nameInput.value = '';
+      creatorInput.value = LevelStorage.getCreatorName();
+      accessSelect.value = 'public';
+      passwordInput.value = '';
+      passwordRow.style.display = 'none';
+    }
+
+    accessSelect.onchange = () => {
+      passwordRow.style.display = accessSelect.value === 'password' ? '' : 'none';
+    };
+
+    dialog.style.display = 'flex';
+
+    document.getElementById('save-confirm-btn').onclick = () => {
+      const name = nameInput.value.trim() || 'Untitled';
+      const creator = creatorInput.value.trim() || 'Anonymous';
+      const access = accessSelect.value;
+      const password = access === 'password' ? passwordInput.value : '';
+
+      const levelData = exportLevel();
+      const saved = LevelStorage.save({
+        id: editingLevelId,
+        name,
+        creator,
+        access,
+        password,
+        data: levelData,
+      });
+      editingLevelId = saved.id;
+
+      // Remember creator name for next time
+      LevelStorage.setCreatorId(creator);
+
+      dialog.style.display = 'none';
+
+      // Brief feedback
+      const btn = document.getElementById('editor-save-btn');
+      btn.textContent = '✅ Saved!';
+      setTimeout(() => { btn.textContent = '💾 Save'; }, 1500);
+    };
+
+    document.getElementById('save-cancel-btn').onclick = () => {
+      dialog.style.display = 'none';
+    };
+  }
+
+  return { start, stop, playLevel, exportLevel, importLevel, openSaveDialog, get active() { return active; }, get editingLevelId() { return editingLevelId; } };
+})();
+
+// ============================================
+// Level Storage (localStorage persistence)
+// ============================================
+
+const LevelStorage = (() => {
+  const STORAGE_KEY = 'powerdefense_levels';
+  const CREATOR_KEY = 'powerdefense_creator';
+
+  function getAll() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function _saveAll(levels) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(levels));
+  }
+
+  function get(id) {
+    return getAll().find(l => l.id === id) || null;
+  }
+
+  function save({ id, name, creator, access, password, data }) {
+    const levels = getAll();
+    const now = Date.now();
+
+    if (id) {
+      // Update existing
+      const idx = levels.findIndex(l => l.id === id);
+      if (idx >= 0) {
+        levels[idx].name = name;
+        levels[idx].creator = creator;
+        levels[idx].access = access;
+        levels[idx].password = password;
+        levels[idx].data = data;
+        levels[idx].updatedAt = now;
+        _saveAll(levels);
+        return levels[idx];
+      }
+    }
+
+    // Create new
+    const entry = {
+      id: 'lvl_' + now + '_' + Math.random().toString(36).slice(2, 8),
+      name,
+      creator,
+      access,       // 'public' | 'private' | 'password'
+      password,     // only relevant if access === 'password'
+      creatorFingerprint: getCreatorId(), // to identify "my" maps
+      data,
+      createdAt: now,
+      updatedAt: now,
+    };
+    levels.push(entry);
+    _saveAll(levels);
+    return entry;
+  }
+
+  function remove(id) {
+    const levels = getAll().filter(l => l.id !== id);
+    _saveAll(levels);
+  }
+
+  function getCreatorId() {
+    let cid = localStorage.getItem(CREATOR_KEY);
+    if (!cid) {
+      cid = 'user_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+      localStorage.setItem(CREATOR_KEY, cid);
+    }
+    return cid;
+  }
+
+  function setCreatorId(name) {
+    // Store the display name (fingerprint stays stable)
+    localStorage.setItem(CREATOR_KEY + '_name', name);
+  }
+
+  function getCreatorName() {
+    return localStorage.getItem(CREATOR_KEY + '_name') || 'Anonymous';
+  }
+
+  function isOwnLevel(entry) {
+    return entry.creatorFingerprint === getCreatorId();
+  }
+
+  return { getAll, get, save, remove, getCreatorId, setCreatorId, getCreatorName, isOwnLevel };
+})();
+
+// ============================================
+// Level Manager UI Controller
+// ============================================
+
+const levelManagerUI = (() => {
+  let currentTab = 'my'; // 'my' | 'all'
+
+  function show() {
+    document.getElementById('main-menu').style.display = 'none';
+    document.getElementById('level-manager').style.display = 'flex';
+    refresh();
+    wireEvents();
+  }
+
+  function hide() {
+    document.getElementById('level-manager').style.display = 'none';
+  }
+
+  function wireEvents() {
+    document.getElementById('lm-tab-my').onclick = () => { currentTab = 'my'; updateTabs(); refresh(); };
+    document.getElementById('lm-tab-all').onclick = () => { currentTab = 'all'; updateTabs(); refresh(); };
+    document.getElementById('lm-new-level-btn').onclick = () => { hide(); levelEditor.start(null, null); };
+    document.getElementById('lm-back-btn').onclick = () => {
+      hide();
+      document.getElementById('main-menu').style.display = 'flex';
+      document.getElementById('main-menu').style.opacity = '1';
+
+      scene.background = new THREE.Color(0x90c8ff);
+      scene.fog = new THREE.Fog(0x90c8ff, 10, 100);
+      camera.position.set(defaultCameraPos.x, defaultCameraPos.y, defaultCameraPos.z);
+      camera.lookAt(0, 0, 0);
+      renderer.render(scene, camera);
+    };
+  }
+
+  function updateTabs() {
+    document.getElementById('lm-tab-my').classList.toggle('active', currentTab === 'my');
+    document.getElementById('lm-tab-all').classList.toggle('active', currentTab === 'all');
+  }
+
+  function refresh() {
+    const container = document.getElementById('lm-content');
+    let levels = LevelStorage.getAll();
+
+    if (currentTab === 'my') {
+      levels = levels.filter(l => LevelStorage.isOwnLevel(l));
+    }
+
+    // Sort: newest first
+    levels.sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt));
+
+    if (levels.length === 0) {
+      container.innerHTML = `<div class="lm-empty">${currentTab === 'my' ? 'You haven\'t created any maps yet.<br>Click "+ New Level" to get started!' : 'No maps have been created yet.'}</div>`;
+      return;
+    }
+
+    container.innerHTML = levels.map(lvl => {
+      const isOwn = LevelStorage.isOwnLevel(lvl);
+      const badgeClass = lvl.access === 'public' ? 'lm-badge-public' : lvl.access === 'private' ? 'lm-badge-private' : 'lm-badge-password';
+      const badgeLabel = lvl.access === 'public' ? '🌐 Public' : lvl.access === 'private' ? '🔒 Private' : '🔑 Password';
+      const date = new Date(lvl.updatedAt || lvl.createdAt).toLocaleDateString();
+      const tiles = lvl.data?.groundCells?.length || 0;
+
+      let actions = `<button class="lm-card-btn lm-play-btn" data-action="play" data-id="${lvl.id}">▶ Play</button>`;
+
+      // Edit button logic: owner can always edit; public = anyone; password = with password
+      if (isOwn || lvl.access === 'public') {
+        actions += `<button class="lm-card-btn" data-action="edit" data-id="${lvl.id}">✏️ Edit</button>`;
+      } else if (lvl.access === 'password') {
+        actions += `<button class="lm-card-btn" data-action="edit-pw" data-id="${lvl.id}">🔑 Edit</button>`;
+      }
+      // Private: no edit button for others
+
+      if (isOwn) {
+        actions += `<button class="lm-card-btn lm-delete-btn" data-action="delete" data-id="${lvl.id}">🗑️</button>`;
+      }
+
+      return `
+        <div class="lm-card">
+          <div class="lm-card-header">
+            <div class="lm-card-name">${escapeHtml(lvl.name)}</div>
+            <span class="lm-card-badge ${badgeClass}">${badgeLabel}</span>
+          </div>
+          <div class="lm-card-meta">
+            <span>👤 ${escapeHtml(lvl.creator)}</span>
+            <span>📐 ${tiles} tiles</span>
+            <span>📅 ${date}</span>
+          </div>
+          <div class="lm-card-actions">${actions}</div>
+        </div>
+      `;
+    }).join('');
+
+    // Attach click handlers via event delegation
+    container.onclick = (e) => {
+      const btn = e.target.closest('[data-action]');
+      if (!btn) return;
+      const action = btn.dataset.action;
+      const id = btn.dataset.id;
+      handleAction(action, id);
+    };
+  }
+
+  function handleAction(action, id) {
+    const lvl = LevelStorage.get(id);
+    if (!lvl) return;
+
+    if (action === 'play') {
+      // Anyone can play any map
+      hide();
+      customLevel = lvl.data;
+      setupCustomLevel(lvl.data);
+      return;
+    }
+
+    if (action === 'edit') {
+      hide();
+      levelEditor.start(lvl.data, id);
+      return;
+    }
+
+    if (action === 'edit-pw') {
+      // Show password prompt
+      showPasswordPrompt(id);
+      return;
+    }
+
+    if (action === 'delete') {
+      if (confirm(`Delete "${lvl.name}"? This cannot be undone.`)) {
+        LevelStorage.remove(id);
+        refresh();
+      }
+    }
+  }
+
+  function showPasswordPrompt(levelId) {
+    const dialog = document.getElementById('password-prompt-dialog');
+    const input = document.getElementById('prompt-password-input');
+    input.value = '';
+    dialog.style.display = 'flex';
+    input.focus();
+
+    document.getElementById('prompt-password-ok').onclick = () => {
+      const lvl = LevelStorage.get(levelId);
+      if (!lvl) { dialog.style.display = 'none'; return; }
+
+      if (input.value === lvl.password) {
+        dialog.style.display = 'none';
+        hide();
+        levelEditor.start(lvl.data, levelId);
+      } else {
+        input.style.borderColor = '#ff4444';
+        input.style.boxShadow = '0 0 8px rgba(255,50,50,0.3)';
+        setTimeout(() => {
+          input.style.borderColor = '';
+          input.style.boxShadow = '';
+        }, 800);
+      }
+    };
+
+    document.getElementById('prompt-password-cancel').onclick = () => {
+      dialog.style.display = 'none';
+    };
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  return { show, hide, refresh };
 })();
 
 // ============================================
@@ -4763,10 +5171,10 @@ async function initGame() {
     }, 600);
   });
 
-  // Wire up level creator button
-  const levelCreatorBtn = document.getElementById('level-creator-btn');
-  levelCreatorBtn.addEventListener('click', () => {
-    levelEditor.start();
+  // Wire up level manager button
+  const levelManagerBtn = document.getElementById('level-manager-btn');
+  levelManagerBtn.addEventListener('click', () => {
+    levelManagerUI.show();
   });
 }
 

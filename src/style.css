@@ -360,6 +360,322 @@ body {
 }
 
 /* ============================================
+   Level Manager
+   ============================================ */
+
+#level-manager {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: radial-gradient(ellipse at center, #1a1a2e 0%, #0a0a14 100%);
+  display: flex;
+  flex-direction: column;
+  z-index: 10000;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  color: #ccc;
+}
+
+.lm-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24px 40px 12px;
+}
+
+.lm-title {
+  font-size: 36px;
+  font-weight: 800;
+  color: #4ecdc4;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  text-shadow: 0 0 14px rgba(78, 205, 196, 0.3);
+}
+
+.lm-header-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.lm-new-btn {
+  font-size: 15px !important;
+  padding: 10px 28px !important;
+}
+
+.lm-back-btn {
+  font-size: 15px !important;
+  padding: 10px 28px !important;
+  border-color: rgba(255, 80, 80, 0.5) !important;
+  color: #ff6666 !important;
+}
+.lm-back-btn:hover {
+  background: rgba(255, 80, 80, 0.2) !important;
+  border-color: #ff6666 !important;
+}
+
+.lm-tabs {
+  display: flex;
+  gap: 0;
+  padding: 0 40px;
+  border-bottom: 1px solid rgba(78, 205, 196, 0.15);
+}
+
+.lm-tab {
+  padding: 10px 32px;
+  font-size: 15px;
+  font-weight: 600;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #666;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s;
+}
+.lm-tab:hover {
+  color: #aaa;
+}
+.lm-tab.active {
+  color: #4ecdc4;
+  border-bottom-color: #4ecdc4;
+}
+
+.lm-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 40px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+  align-content: start;
+}
+
+.lm-empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 60px 0;
+  color: #555;
+  font-size: 18px;
+  font-style: italic;
+}
+
+.lm-card {
+  background: rgba(20, 25, 40, 0.8);
+  border: 1px solid rgba(78, 205, 196, 0.15);
+  border-radius: 8px;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.lm-card:hover {
+  border-color: rgba(78, 205, 196, 0.4);
+  box-shadow: 0 2px 16px rgba(78, 205, 196, 0.1);
+}
+
+.lm-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.lm-card-name {
+  font-size: 18px;
+  font-weight: 700;
+  color: #eee;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lm-card-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+.lm-badge-public  { background: rgba(78, 205, 196, 0.2); color: #4ecdc4; border: 1px solid rgba(78, 205, 196, 0.3); }
+.lm-badge-private { background: rgba(255, 80, 80, 0.15); color: #ff7777; border: 1px solid rgba(255, 80, 80, 0.25); }
+.lm-badge-password { background: rgba(255, 200, 50, 0.15); color: #eebb33; border: 1px solid rgba(255, 200, 50, 0.25); }
+
+.lm-card-meta {
+  font-size: 12px;
+  color: #777;
+  display: flex;
+  gap: 14px;
+}
+.lm-card-meta span { white-space: nowrap; }
+
+.lm-card-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.lm-card-btn {
+  flex: 1;
+  padding: 7px 0;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  background: rgba(78, 205, 196, 0.12);
+  border: 1px solid rgba(78, 205, 196, 0.3);
+  color: #ccc;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  text-align: center;
+}
+.lm-card-btn:hover {
+  background: rgba(78, 205, 196, 0.3);
+  color: #fff;
+}
+.lm-card-btn.lm-play-btn {
+  background: rgba(34, 200, 34, 0.15);
+  border-color: rgba(34, 200, 34, 0.35);
+}
+.lm-card-btn.lm-play-btn:hover {
+  background: rgba(34, 200, 34, 0.4);
+  color: #66ff66;
+}
+.lm-card-btn.lm-delete-btn {
+  background: rgba(255, 50, 50, 0.1);
+  border-color: rgba(255, 50, 50, 0.25);
+  color: #cc6666;
+  flex: 0 0 auto;
+  padding: 7px 14px;
+}
+.lm-card-btn.lm-delete-btn:hover {
+  background: rgba(255, 50, 50, 0.35);
+  color: #ff6666;
+}
+
+/* ============================================
+   Save Dialog / Password Prompt
+   ============================================ */
+
+#level-save-dialog,
+#password-prompt-dialog {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  z-index: 11000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.save-dialog-backdrop {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.65);
+}
+
+.save-dialog-box {
+  position: relative;
+  background: #14192a;
+  border: 1px solid #4ecdc4;
+  border-radius: 10px;
+  padding: 28px 32px;
+  min-width: 360px;
+  max-width: 440px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+  font-family: 'Segoe UI', Arial, sans-serif;
+}
+
+.save-dialog-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: #4ecdc4;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  text-align: center;
+}
+
+.save-label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 13px;
+  color: #999;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.save-input {
+  padding: 10px 14px;
+  font-size: 15px;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(78,205,196,0.3);
+  color: #eee;
+  border-radius: 5px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.save-input:focus {
+  border-color: #4ecdc4;
+  box-shadow: 0 0 8px rgba(78,205,196,0.2);
+}
+.save-input::placeholder { color: #555; }
+
+.save-select {
+  padding: 10px 14px;
+  font-size: 14px;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  background: rgba(20, 25, 40, 0.9);
+  border: 1px solid rgba(78,205,196,0.3);
+  color: #ddd;
+  border-radius: 5px;
+  outline: none;
+  cursor: pointer;
+}
+.save-select:focus {
+  border-color: #4ecdc4;
+}
+
+.save-dialog-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.save-confirm-btn {
+  flex: 1;
+  font-size: 16px !important;
+  padding: 12px 0 !important;
+}
+
+.save-cancel-btn {
+  flex: 0 0 auto;
+  font-size: 14px !important;
+  padding: 12px 24px !important;
+  border-color: rgba(255, 80, 80, 0.4) !important;
+  color: #cc6666 !important;
+}
+.save-cancel-btn:hover {
+  background: rgba(255, 80, 80, 0.2) !important;
+  color: #ff6666 !important;
+}
+
+/* Editor save button — blue/teal glow */
+.editor-save-btn {
+  background: rgba(50, 120, 220, 0.2) !important;
+  border-color: rgba(50, 120, 220, 0.4) !important;
+}
+.editor-save-btn:hover {
+  background: rgba(50, 120, 220, 0.45) !important;
+  border-color: #3388ee !important;
+  color: #88ccff !important;
+}
+
+/* ============================================
    Power-Up Flash
    ============================================ */
 
