@@ -125,12 +125,12 @@ const powerUpState = {
 
 const roundConfig = {
   baseZombiesToKill: 3,       // Zombies to kill in round 1
-  zombiesPerRoundIncrease: 2, // Additional zombies each round
+  zombiesPerRoundIncrease: 3, // Additional zombies each round
   roundTimeLimit: 30,         // Seconds per round
-  zombieHealthIncrease: 0.1, // 10% more health per round
+  zombieHealthIncrease: 0.10, // 10% more health per round
   zombieDamageIncrease: 0.05, // 5% more damage per round
-  zombieSpeedIncrease: 0.05,  // 5% more speed per round
-  maxZombiesIncrease: 1,      // Additional max zombies per round
+  zombieSpeedIncrease: 0.1,  // 10% more speed per round
+  maxZombiesIncrease: 2,      // Additional max zombies per round
   baseMaxZombies: 3,          // Starting max zombies on screen
   roundBonus: 100,
 };
@@ -156,20 +156,28 @@ damageFlash.style.cssText = `
   background: radial-gradient(ellipse at center, rgba(255, 0, 0, 0) 0%, rgba(255, 0, 0, 0.6) 100%);
   pointer-events: none;
   opacity: 0;
-  transition: opacity 0.1s ease-in;
   z-index: 50;
 `;
 document.body.appendChild(damageFlash);
 
+let lastDamageFlashTime = 0;
+const damageFlashCooldown = 500; // Minimum ms between flashes
 function triggerDamageFlash() {
+  const now = Date.now();
+  if (now - lastDamageFlashTime < damageFlashCooldown) return;
+  lastDamageFlashTime = now;
+  
+  // Force reflow to restart animation
+  damageFlash.style.transition = 'none';
   damageFlash.style.opacity = '1';
-  setTimeout(() => {
-    damageFlash.style.transition = 'opacity 0.4s ease-out';
-    damageFlash.style.opacity = '0';
-    setTimeout(() => {
-      damageFlash.style.transition = 'opacity 0.1s ease-in';
-    }, 400);
-  }, 50);
+  
+  // Use requestAnimationFrame to ensure the opacity change is applied
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      damageFlash.style.transition = 'opacity 0.4s ease-out';
+      damageFlash.style.opacity = '0';
+    });
+  });
 }
 
 // ============================================
@@ -574,10 +582,10 @@ const ui = {
 
     const buildingTypes = [
       { key: 'solarPanel', name: 'Solar Panel', cost: 100, hotkey: '1', desc: 'Generates energy from sunlight' },
-      { key: 'windTurbine', name: 'Wind Turbine', cost: 150, hotkey: '2', desc: 'Generates energy from wind' },
-      { key: 'powerPlant', name: 'Power Plant', cost: 300, hotkey: '3', desc: 'High output energy generator' },
-      { key: 'turret', name: 'Turret', cost: 200, hotkey: '4', desc: 'Shoots nearby zombies' },
-      { key: 'missileTurret', name: 'Missile Turret', cost: 400, hotkey: '5', desc: 'Splash damage missiles' },
+      { key: 'windTurbine', name: 'Wind Turbine', cost: 200, hotkey: '2', desc: 'Generates energy from wind' },
+      { key: 'powerPlant', name: 'Power Plant', cost: 600, hotkey: '3', desc: 'High output energy generator' },
+      { key: 'turret', name: 'Turret', cost: 400, hotkey: '4', desc: 'Shoots nearby zombies' },
+      { key: 'missileTurret', name: 'Missile Turret', cost: 600, hotkey: '5', desc: 'Splash damage missiles' },
     ];
 
     buildingTypes.forEach(building => {
@@ -911,7 +919,7 @@ const ui = {
         powerUpState.instaKillActive = true;
         powerUpState.instaKillTimer = 10000;
         powerUpState.instaKillCooldown = 60000;
-        // Set all current zombies to 1 health (big zombies get reduced to 10% HP instead)
+        // Set all current zombies to 1 health (big zombies to 10% HP)
         zombies.forEach(z => { z.health = Math.min(z.health, 1); });
         bigZombies.forEach(z => { z.health = Math.min(z.health, Math.round(z.maxHealth * 0.1)); });
         console.log('Insta Kill! All zombies set to 1 HP for 10s.');
@@ -1162,9 +1170,8 @@ function startRound() {
   SoundManager.play('newRound');
   console.log(`Round ${currentRound} started! Kill ${zombiesToKillThisRound} zombies. Max on screen: ${currentMaxZombies}`);
   
-  // Spawn a big zombie (for testing: always on round 1; later: every N rounds)
-  // TODO: Change spawn condition to (currentRound % 5 === 0) for production
-  if (currentRound >= 1) {
+  // Spawn a big zombie starting at round 5, then every 5 rounds
+  if (currentRound >= 5 && currentRound % 5 === 0) {
     spawnBigZombie();
   }
 }
@@ -1534,10 +1541,10 @@ window.addEventListener("keydown", (e)=>{
   // Building hotkeys (only work in build mode)
   if (buildMode) {
     if (e.key === '1') ui.selectBuilding('solarPanel', 100);
-    if (e.key === '2') ui.selectBuilding('windTurbine', 150);
-    if (e.key === '3') ui.selectBuilding('powerPlant', 300);
-    if (e.key === '4') ui.selectBuilding('turret', 200);
-    if (e.key === '5') ui.selectBuilding('missileTurret', 400);
+    if (e.key === '2') ui.selectBuilding('windTurbine', 300);
+    if (e.key === '3') ui.selectBuilding('powerPlant', 600);
+    if (e.key === '4') ui.selectBuilding('turret', 400);
+    if (e.key === '5') ui.selectBuilding('missileTurret', 800);
   }
 
   // Power-up hotkeys (only work in power-up mode)
@@ -1923,8 +1930,8 @@ function Zombie(x, z, speed, health = 100, damage = 0.5) {
 
         if(playerHealth > 0 && !powerUpState.shieldActive) {
           playerHealth -= this.damage * dt;
-        } else if (!powerUpState.shieldActive) { 
           triggerDamageFlash();
+        } else if (!powerUpState.shieldActive && playerHealth <= 0) { 
           playerHealth = 0;
         }
       }
@@ -2002,7 +2009,7 @@ function BigZombie(x, z) {
     scene.add(this.mesh);
 
     // --- Health Bar ---
-    const barWidth = 4; // wider bar for the big zombie
+    const barWidth = 4;
     const barHeight = 0.35;
     const bgGeo = new THREE.PlaneGeometry(barWidth, barHeight);
     const bgMat = new THREE.MeshBasicMaterial({ color: 0x333333, depthTest: false, transparent: true, opacity: 0.7 });
@@ -2070,7 +2077,7 @@ function BigZombie(x, z) {
 
     // Procedural animation — slower, heavier feeling
     if (this.innerModel) {
-      const walkSpeed = 4; // slower cadence than regular zombie
+      const walkSpeed = 4;
       const attackSpeed = 3;
 
       if (this.isMoving) {
@@ -2078,10 +2085,7 @@ function BigZombie(x, z) {
         this.isAttacking = false;
         const t = this.animTime * walkSpeed;
 
-        // Heavy ground-shaking bob
         this.mesh.position.y = Math.abs(Math.sin(t)) * 0.25;
-
-        // Lumbering sway
         this.innerModel.rotation.z = Math.sin(t) * 0.08;
         this.innerModel.rotation.x = 0.15 + Math.sin(t * 2) * 0.04;
         this.innerModel.rotation.y = Math.sin(t * 0.5) * 0.05;
@@ -2101,14 +2105,12 @@ function BigZombie(x, z) {
     if (this.healthBarGroup) {
       const pct = Math.max(0, this.health / this.maxHealth);
       this.healthBarFg.scale.x = pct;
-      this.healthBarFg.position.x = -(1 - pct) * 2; // half of barWidth
+      this.healthBarFg.position.x = -(1 - pct) * 2;
 
-      // Color gradient: green -> yellow -> red
       const r = pct < 0.5 ? 1 : 1 - (pct - 0.5) * 2;
       const g = pct > 0.5 ? 1 : pct * 2;
       this.healthBarFg.material.color.setRGB(r, g, 0);
 
-      // Billboard toward camera
       this.healthBarGroup.quaternion.copy(camera.quaternion);
       this.healthBarGroup.position.set(this.x, this.healthBarY, this.z);
     }
@@ -2122,7 +2124,7 @@ function BigZombie(x, z) {
         let zDiff = this.targetBuilding.z - this.z;
         let distanceToTarget = Math.sqrt(xDiff * xDiff + zDiff * zDiff);
 
-        if (distanceToTarget < 3) { // slightly larger attack range
+        if (distanceToTarget < 3) {
           this.vX = 0;
           this.vZ = 0;
 
@@ -2301,17 +2303,17 @@ function Building(type, x, z, options = {}) {
   const turretUpgrade = upgradeState[type];
   const turretConfig = {
     turret: {
-      damage: 20 + (turretUpgrade ? turretUpgrade.level * turretUpgrade.bonus : 0),
+      damage: 15 + (turretUpgrade ? turretUpgrade.level * turretUpgrade.bonus : 0),
       fireRate: 200,      // ms between shots
       range: 15,
       splashRadius: 0,    // no splash
       rotationSpeed: 0.15 // radians per frame for smooth rotation
     },
     missileTurret: {
-      damage: 50 + (turretUpgrade ? turretUpgrade.level * turretUpgrade.bonus : 0),
+      damage: 35 + (turretUpgrade ? turretUpgrade.level * turretUpgrade.bonus : 0),
       fireRate: 1000,     // ms between shots (slower)
       range: 20,
-      splashRadius: 10,    // splash damage radius
+      splashRadius: 5,    // splash damage radius
       rotationSpeed: 0.08 // slower rotation for missile turret
     }
   };
