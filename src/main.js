@@ -78,6 +78,7 @@ let gameOver = false;
 let gameLoopInterval = null;
 let cutsceneActive = false;
 let gameStarted = false;
+let isNight = false;
 
 const hydroElectricRate = 0.25;
 
@@ -212,10 +213,7 @@ const scene = new THREE.Scene();
 // Skybox and Fog
 // ============================================
 
-// Set sky color as scene background
 scene.background = new THREE.Color(0x90c8ff); // Solid sky blue
-
-// Add fog for atmosphere (color, near distance, far distance)
 scene.fog = new THREE.Fog(0x90c8ff, 10, 100);
 
 // ============================================
@@ -376,10 +374,7 @@ const modelLoader = {
           this.cache.set(modelName, gltf);
           resolve(gltf.scene.clone());
         },
-        (progress) => {
-          // Optional: track loading progress
-          // console.log(`Loading ${modelName}: ${(progress.loaded / progress.total * 100).toFixed(1)}%`);
-        },
+        undefined,
         (error) => {
           reject(new Error(`Failed to load model "${modelName}": ${error.message}`));
         }
@@ -1034,14 +1029,18 @@ const ui = {
     // Calculate total energy rate (per tick)
     let totalRatePerTick = hydroElectricRate; // Base passive rate
     buildings.forEach(b => {
-      if (b.energyRate) totalRatePerTick += b.energyRate;
+      if (!b.energyRate) return;
+      // Solar panels don't generate at night
+      if (b.type === 'solarPanel' && isNight) return;
+      totalRatePerTick += b.energyRate;
     });
     const multiplier = powerUpState.surgeActive ? 2 : 1;
     totalRatePerTick *= multiplier;
     // Convert to per-second (rates are calibrated to 100ms ticks, so 10 ticks per second)
     const ticksPerSecond = 10;
     const totalRatePerSecond = totalRatePerTick * ticksPerSecond;
-    this.energyRateDisplay.textContent = `   +${totalRatePerSecond.toFixed(1)}/sec${multiplier > 1 ? ' (2x)' : ''}`;
+    const nightSuffix = isNight ? ' 🌙' : '';
+    this.energyRateDisplay.textContent = `   +${totalRatePerSecond.toFixed(1)}/sec${multiplier > 1 ? ' (2x)' : ''}${nightSuffix}`;
     
     // Round info
     if (currentRound === 0) {
@@ -1152,7 +1151,19 @@ function getZombieStatsForRound() {
  * Start a new round
  */
 function startRound() {
+  
   currentRound++;
+  if (currentRound % 3 === 0 && currentRound !== 0) {
+    isNight = true;
+    scene.background = new THREE.Color(0x0a0a1a); 
+    scene.fog = new THREE.FogExp2(0x0a0a1a, 0.02);
+    scene.fog = new THREE.Fog(0x0a0a1a, 10, 100);
+  } else {
+    scene.background = new THREE.Color(0x87ceeb);
+    scene.fog = new THREE.Fog(0x90c8ff, 10, 100);
+
+    isNight = false;
+  }
   zombiesKilledThisRound = 0;
   totalZombiesSpawnedThisRound = 0;
   
@@ -2302,6 +2313,10 @@ function Building(type, x, z, options = {}) {
     this.energyRate = defaultEnergyRates[type];
   }
 
+  this.isSolarPanel = (type === 'solarPanel');
+  this.isWindTurbine = (type === 'windTurbine');
+  this.isPowerPlant = (type === 'powerPlant');
+
   // ============================================
   // Turret Attack Configuration
   // ============================================
@@ -2416,7 +2431,12 @@ function Building(type, x, z, options = {}) {
   }
 
   this.update = function update(dt) {
-    energy += this.energyRate * (powerUpState.surgeActive ? 2 : 1) * dt;
+    if (!this.isSolarPanel || !isNight){
+      energy += this.energyRate * (powerUpState.surgeActive ? 2 : 1) * dt;
+    }
+    
+
+    
 
     // ============================================
     // Turret Attack Logic
@@ -3131,14 +3151,7 @@ async function initGame() {
   // Preload all models for instant spawning during gameplay
   await modelLoader.preload(['zombie', 'solarPanel', 'windTurbine', 'powerPlant', 'turret', 'missileTurret', 'map']);
 
-  // ============================================
-  // Power-Up Shop (cute 3D booth)
-  // ============================================
   createPowerUpShop();
-
-  // ============================================
-  // Upgrade Shop (3D booth)
-  // ============================================
   createUpgradeShop();
 
   // Shield Dome Visual
