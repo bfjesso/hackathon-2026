@@ -84,11 +84,12 @@ const hydroElectricRate = 0.25;
 
 // Upgrade state - tracks upgrade levels for each building type
 const upgradeState = {
-  solarPanel: { level: 0, baseCost: 1000, costMultiplier: 1.5, bonus: 0.25 },      // +25% energy per level
-  windTurbine: { level: 0, baseCost: 1200, costMultiplier: 1.5, bonus: 0.15 },     // +15% energy per level
-  powerPlant: { level: 0, baseCost: 2000, costMultiplier: 1.6, bonus: 0.50 },      // +50% energy per level
-  turret: { level: 0, baseCost: 1500, costMultiplier: 1.5, bonus: 10 },            // +10 damage per level
-  missileTurret: { level: 0, baseCost: 2500, costMultiplier: 1.6, bonus: 25 },     // +25 damage per level
+  solarPanel:    { level: 0, baseCost: 1000, costMultiplier: 1.5, bonus: 0.25 },  // +25% energy per level
+  windTurbine:   { level: 0, baseCost: 1200, costMultiplier: 1.5, bonus: 0.15 },  // +15% energy per level
+  powerPlant:    { level: 0, baseCost: 2000, costMultiplier: 1.6, bonus: 0.50 },  // +50% energy per level
+  turret:        { level: 0, baseCost: 1500, costMultiplier: 1.5, bonus: 10 },    // +10 damage per level
+  missileTurret: { level: 0, baseCost: 2500, costMultiplier: 1.6, bonus: 25 },    // +25 damage per level
+  hydroElectric: { level: 0, baseCost: 50,  costMultiplier: 1.1, bonus: 0.5  },  // +50% hydro rate per level
 };
 
 // Get current upgrade cost for a building type
@@ -102,6 +103,8 @@ function getUpgradeBonus(type) {
   const upgrade = upgradeState[type];
   if (type === 'turret' || type === 'missileTurret') {
     return `+${upgrade.bonus} damage`;
+  } else if (type === 'hydroElectric') {
+    return `+${Math.round(upgrade.bonus * 100)}% hydro rate`;
   } else {
     return `+${Math.round(upgrade.bonus * 100)}% energy`;
   }
@@ -806,11 +809,12 @@ const ui = {
     this.upgradeMenu.appendChild(this.upgradeTooltip);
 
     const upgradeTypes = [
-      { key: 'solarPanel', name: 'Solar Panel', hotkey: '1', desc: 'Increases energy generation of all Solar Panels' },
-      { key: 'windTurbine', name: 'Wind Turbine', hotkey: '2', desc: 'Increases energy generation of all Wind Turbines' },
-      { key: 'powerPlant', name: 'Power Plant', hotkey: '3', desc: 'Increases energy generation of all Power Plants' },
-      { key: 'turret', name: 'Turret', hotkey: '4', desc: 'Increases damage of all Turrets' },
-      { key: 'missileTurret', name: 'Missile Turret', hotkey: '5', desc: 'Increases damage of all Missile Turrets' },
+      { key: 'solarPanel',    name: 'Solar Panel',    hotkey: '1', desc: 'Increases energy generation of all Solar Panels' },
+      { key: 'windTurbine',  name: 'Wind Turbine',   hotkey: '2', desc: 'Increases energy generation of all Wind Turbines' },
+      { key: 'powerPlant',   name: 'Power Plant',    hotkey: '3', desc: 'Increases energy generation of all Power Plants' },
+      { key: 'turret',       name: 'Turret',         hotkey: '4', desc: 'Increases damage of all Turrets' },
+      { key: 'missileTurret',name: 'Missile Turret', hotkey: '5', desc: 'Increases damage of all Missile Turrets' },
+      { key: 'hydroElectric',name: 'Hydro Dam',      hotkey: '6', desc: 'Increases passive hydroelectric energy income' },
     ];
 
     this.upgradeButtons = {};
@@ -876,11 +880,12 @@ const ui = {
 
   refreshUpgradeButtons() {
     const upgradeTypes = [
-      { key: 'solarPanel', name: 'Solar Panel', hotkey: '1' },
-      { key: 'windTurbine', name: 'Wind Turbine', hotkey: '2' },
-      { key: 'powerPlant', name: 'Power Plant', hotkey: '3' },
-      { key: 'turret', name: 'Turret', hotkey: '4' },
-      { key: 'missileTurret', name: 'Missile Turret', hotkey: '5' },
+      { key: 'solarPanel',     name: 'Solar Panel',    hotkey: '1' },
+      { key: 'windTurbine',    name: 'Wind Turbine',   hotkey: '2' },
+      { key: 'powerPlant',     name: 'Power Plant',    hotkey: '3' },
+      { key: 'turret',         name: 'Turret',         hotkey: '4' },
+      { key: 'missileTurret',  name: 'Missile Turret', hotkey: '5' },
+      { key: 'hydroElectric',  name: 'Hydro Dam',      hotkey: '6' },
     ];
     upgradeTypes.forEach(upgrade => {
       if (this.upgradeButtons[upgrade.key]) {
@@ -1081,7 +1086,9 @@ const ui = {
     this.energyDisplay.textContent = `⚡: ${Math.round(energy)} Joules`;
     
     // Calculate total energy rate (per tick)
-    let totalRatePerTick = hydroElectricRate; // Base passive rate
+    const hydroLevel = upgradeState.hydroElectric.level;
+    const hydroBonus = upgradeState.hydroElectric.bonus;
+    let totalRatePerTick = hydroElectricRate * (1 + hydroLevel * hydroBonus); // Base passive rate (upgraded)
     buildings.forEach(b => {
       if (!b.energyRate) return;
       // Solar panels don't generate at night
@@ -1280,8 +1287,7 @@ function onZombieKilled() {
 }
 
 function spawnZombie() {
-  // Always try to max out zombies on screen (as long as there are buildings)
-  if (zombies.length >= currentMaxZombies || buildings.length == 0 || currentRound === 0) {
+  if (zombies.length >= currentMaxZombies || currentRound === 0) {
     return;
   }
   
@@ -1327,7 +1333,7 @@ function gameLoop(timestamp) {
   if (spawnAccumulator >= 1000) {
     spawnAccumulator -= 1000;
     // Spawn zombies until we reach max capacity
-    while (zombies.length < currentMaxZombies && buildings.length > 0 && currentRound > 0) {
+    while (zombies.length < currentMaxZombies && currentRound > 0) {
       spawnZombie();
     }
   }
@@ -1386,7 +1392,10 @@ function gameLoop(timestamp) {
     }
   }
   if (currentRound > 0) {
-    energy += hydroElectricRate * (powerUpState.surgeActive ? 2 : 1) * dt;
+    const hydroLevel = upgradeState.hydroElectric.level;
+    const hydroBonus = upgradeState.hydroElectric.bonus;
+    const hydroRate = hydroElectricRate * (1 + hydroLevel * hydroBonus);
+    energy += hydroRate * (powerUpState.surgeActive ? 2 : 1) * dt;
   }
   
 
@@ -1589,6 +1598,11 @@ window.addEventListener("keydown", (e)=>{
   // Don't process game keys during menu or cutscene
   if (!gameStarted || cutsceneActive) return;
 
+  if (e.key === 'Enter' && currentRound === 0) {
+    startRound();
+    return;
+  }
+
   // Toggle build mode
   if (e.key === 'b' || e.key === 'B') {
     ui.toggleBuildMode();
@@ -1663,6 +1677,7 @@ window.addEventListener("keydown", (e)=>{
     if (e.key === '3') ui.buyUpgrade('powerPlant');
     if (e.key === '4') ui.buyUpgrade('turret');
     if (e.key === '5') ui.buyUpgrade('missileTurret');
+    if (e.key === '6') ui.buyUpgrade('hydroElectric');
   }
   
   if (e.key === 'Escape') {
