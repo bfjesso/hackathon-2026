@@ -2303,7 +2303,9 @@ function Building(type, x, z, options = {}) {
   const turretUpgrade = upgradeState[type];
   const turretConfig = {
     turret: {
+      
       damage: 25 + (turretUpgrade ? turretUpgrade.level * turretUpgrade.bonus : 0),
+
       fireRate: 200,      // ms between shots
       range: 15,
       splashRadius: 0,    // no splash
