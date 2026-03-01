@@ -1144,7 +1144,7 @@ function getZombieStatsForRound() {
   return {
     health: Math.round(100 * healthMultiplier),
     damage: 0.5 * damageMultiplier,
-    speed: 0.5 * speedMultiplier
+    speed: Math.min(0.5 * speedMultiplier, 5.0) // Cap speed so zombies can't skip past buildings
   };
 }
 
