@@ -1541,10 +1541,10 @@ window.addEventListener("keydown", (e)=>{
   // Building hotkeys (only work in build mode)
   if (buildMode) {
     if (e.key === '1') ui.selectBuilding('solarPanel', 100);
-    if (e.key === '2') ui.selectBuilding('windTurbine', 300);
+    if (e.key === '2') ui.selectBuilding('windTurbine', 200);
     if (e.key === '3') ui.selectBuilding('powerPlant', 600);
     if (e.key === '4') ui.selectBuilding('turret', 400);
-    if (e.key === '5') ui.selectBuilding('missileTurret', 800);
+    if (e.key === '5') ui.selectBuilding('missileTurret', 600);
   }
 
   // Power-up hotkeys (only work in power-up mode)
@@ -2303,7 +2303,7 @@ function Building(type, x, z, options = {}) {
   const turretUpgrade = upgradeState[type];
   const turretConfig = {
     turret: {
-      damage: 15 + (turretUpgrade ? turretUpgrade.level * turretUpgrade.bonus : 0),
+      damage: 25 + (turretUpgrade ? turretUpgrade.level * turretUpgrade.bonus : 0),
       fireRate: 200,      // ms between shots
       range: 15,
       splashRadius: 0,    // no splash
