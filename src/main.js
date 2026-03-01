@@ -1037,7 +1037,22 @@ const ui = {
     this.buildMenu.style.display = buildMode ? 'block' : 'none';
     
     // Update camera position
-    if (buildMode) {
+    if (customLevel && customLevel.buildView === 'free') {
+      // Free camera custom levels: don't change camera at all
+    } else if (customLevel && customLevel.buildView === 'set' && customLevel.buildCam && buildMode) {
+      // Use the captured build view from the editor
+      const bc = customLevel.buildCam;
+      const sp = Math.sin(bc.phi);
+      const cp = Math.cos(bc.phi);
+      const st = Math.sin(bc.theta);
+      const ct = Math.cos(bc.theta);
+      camera.position.set(
+        bc.targetX + bc.distance * sp * st,
+        bc.distance * cp,
+        bc.targetZ + bc.distance * sp * ct
+      );
+      camera.lookAt(bc.targetX, 0, bc.targetZ);
+    } else if (buildMode) {
       camera.position.set(buildModeCameraPos.x, buildModeCameraPos.y-15, buildModeCameraPos.z);
       camera.lookAt(0, 0, 0);
     } else {
@@ -1187,6 +1202,49 @@ camera.lookAt(0, 0, 0);
 // Store camera positions for build mode toggle
 const defaultCameraPos = { x: 0, y: 15, z: 20 };
 const buildModeCameraPos = { x: 0, y: 35, z: 0.1 }; // Directly above, slight z offset to avoid gimbal lock
+
+// Free camera state for custom level gameplay
+const gameCamState = {
+  active: false,
+  targetX: 0, targetZ: 0,
+  distance: 35,
+  phi: 0.3,
+  theta: 0,
+  keys: { w: false, a: false, s: false, d: false,
+          arrowleft: false, arrowright: false, arrowup: false, arrowdown: false },
+};
+
+function updateGameCamera(deltaMs) {
+  if (!gameCamState.active) return;
+  const dt = deltaMs / 16.67;
+  const moveSpeed = 0.4 * dt;
+  const rotateSpeed = 0.03 * dt;
+
+  const forward = new THREE.Vector3(-Math.sin(gameCamState.theta), 0, -Math.cos(gameCamState.theta));
+  const right = new THREE.Vector3(Math.cos(gameCamState.theta), 0, -Math.sin(gameCamState.theta));
+
+  if (gameCamState.keys.w) { gameCamState.targetX += forward.x * moveSpeed; gameCamState.targetZ += forward.z * moveSpeed; }
+  if (gameCamState.keys.s) { gameCamState.targetX -= forward.x * moveSpeed; gameCamState.targetZ -= forward.z * moveSpeed; }
+  if (gameCamState.keys.a) { gameCamState.targetX -= right.x * moveSpeed; gameCamState.targetZ -= right.z * moveSpeed; }
+  if (gameCamState.keys.d) { gameCamState.targetX += right.x * moveSpeed; gameCamState.targetZ += right.z * moveSpeed; }
+
+  if (gameCamState.keys.arrowleft)  gameCamState.theta += rotateSpeed;
+  if (gameCamState.keys.arrowright) gameCamState.theta -= rotateSpeed;
+  if (gameCamState.keys.arrowup)   gameCamState.phi = Math.max(0.05, gameCamState.phi - rotateSpeed);
+  if (gameCamState.keys.arrowdown) gameCamState.phi = Math.min(Math.PI / 2 - 0.05, gameCamState.phi + rotateSpeed);
+
+  const sp = Math.sin(gameCamState.phi);
+  const cp = Math.cos(gameCamState.phi);
+  const st = Math.sin(gameCamState.theta);
+  const ct = Math.cos(gameCamState.theta);
+
+  camera.position.set(
+    gameCamState.targetX + gameCamState.distance * sp * st,
+    gameCamState.distance * cp,
+    gameCamState.targetZ + gameCamState.distance * sp * ct
+  );
+  camera.lookAt(gameCamState.targetX, 0, gameCamState.targetZ);
+}
 
 const cubeGeometry = new THREE.BoxGeometry( 1, 1, 1 );
 const cubeMaterial = new THREE.MeshBasicMaterial( { color: 0x00ff00, wireframe: true } );
@@ -1586,6 +1644,9 @@ function gameLoop(timestamp) {
   
   // Update hover indicator every frame
   updateHoverIndicator();
+
+  // Update custom level free camera
+  updateGameCamera(deltaTimeMs);
   
   ui.update();
   renderer.render( scene, camera );
@@ -1662,6 +1723,15 @@ window.addEventListener("keydown", (e)=>{
   // Don't process game keys during menu, cutscene, or level editor
   if (!gameStarted || cutsceneActive) return;
   if (levelEditor.active) return;
+
+  // Custom level free camera keys (WASD + arrows)
+  if (customLevel && gameCamState.active) {
+    const k = e.key.toLowerCase();
+    if (k in gameCamState.keys) {
+      gameCamState.keys[k] = true;
+      e.preventDefault();
+    }
+  }
 
   // Toggle build mode
   if (e.key === 'b' || e.key === 'B') {
@@ -1749,6 +1819,21 @@ window.addEventListener("keydown", (e)=>{
     if (upgradeMode) {
       ui.toggleUpgradeMode();
     }
+  }
+});
+
+// Custom level free camera: keyup + scroll
+window.addEventListener("keyup", (e) => {
+  if (customLevel && gameCamState.active) {
+    const k = e.key.toLowerCase();
+    if (k in gameCamState.keys) gameCamState.keys[k] = false;
+  }
+});
+
+window.addEventListener("wheel", (e) => {
+  if (!gameStarted || cutsceneActive || levelEditor.active) return;
+  if (customLevel && gameCamState.active) {
+    gameCamState.distance = Math.max(5, Math.min(120, gameCamState.distance + e.deltaY * 0.05));
   }
 });
 
@@ -3413,6 +3498,8 @@ const levelEditor = (() => {
   let pathColor = '#cc8844';
   let tool = 'draw'; // 'draw' | 'erase' | 'grass' | 'spawner' | 'target' | 'placeable'
   let selectedTheme = 'default';
+  let buildView = 'free'; // 'free' | 'set'
+  let capturedBuildCam = null; // { targetX, targetZ, distance, phi, theta } when buildView === 'set'
 
   // Ground cells: Set of "x,z" keys — freeform shape
   const groundCells = new Map(); // "x,z" -> Mesh
@@ -4039,13 +4126,33 @@ const levelEditor = (() => {
     document.getElementById('editor-path-color').oninput = (e) => { pathColor = e.target.value; };
     document.getElementById('editor-clear-btn').onclick = () => clearAllPaths();
     document.getElementById('editor-theme-select').onchange = (e) => { selectedTheme = e.target.value; applyEditorThemePreview(e.target.value); };
+    document.getElementById('editor-buildview-select').onchange = (e) => {
+      buildView = e.target.value;
+      document.getElementById('editor-setview-btn').style.display = buildView === 'set' ? 'inline-block' : 'none';
+      if (buildView === 'free') capturedBuildCam = null;
+    };
+    document.getElementById('editor-setview-btn').onclick = () => {
+      capturedBuildCam = {
+        targetX: camState.targetX,
+        targetZ: camState.targetZ,
+        distance: camState.distance,
+        phi: camState.phi,
+        theta: camState.theta,
+      };
+      document.getElementById('editor-setview-btn').textContent = '✅ Captured!';
+      setTimeout(() => { document.getElementById('editor-setview-btn').textContent = '📷 Capture'; }, 1500);
+    };
     document.getElementById('editor-play-btn').onclick = () => playLevel();
     document.getElementById('editor-back-btn').onclick = () => stop();
 
-    // Reset theme selector
+    // Reset theme & build view selectors
     selectedTheme = 'default';
     document.getElementById('editor-theme-select').value = 'default';
     applyEditorThemePreview('default');
+    buildView = 'free';
+    capturedBuildCam = null;
+    document.getElementById('editor-buildview-select').value = 'free';
+    document.getElementById('editor-setview-btn').style.display = 'none';
 
     setTool('draw');
 
@@ -4091,6 +4198,8 @@ const levelEditor = (() => {
       target: targetCell ? { gx: targetCell.gx, gz: targetCell.gz } : null,
       placeableCells: [],
       theme: selectedTheme,
+      buildView: buildView,
+      buildCam: buildView === 'set' && capturedBuildCam ? { ...capturedBuildCam } : null,
     };
     for (const [key] of groundCells) {
       const [gx, gz] = key.split(',').map(Number);
@@ -4184,6 +4293,7 @@ function setupCustomLevel(level) {
   if (upgradeShopGroup) upgradeShopGroup.visible = false;
   if (mapModelRef) mapModelRef.visible = false;
   if (shieldMesh) shieldMesh.visible = false;
+  gridHelper.visible = false;
 
   // Apply theme
   const themeName = level.theme || 'default';
@@ -4342,6 +4452,16 @@ function setupCustomLevel(level) {
 
   camera.position.set(defaultCameraPos.x, defaultCameraPos.y, defaultCameraPos.z);
   camera.lookAt(centerX, 0, centerZ);
+
+  // Initialize free camera for custom level gameplay
+  gameCamState.active = true;
+  gameCamState.targetX = centerX;
+  gameCamState.targetZ = centerZ;
+  gameCamState.distance = camHeight;
+  gameCamState.phi = 0.3;
+  gameCamState.theta = 0;
+  // Reset all keys
+  for (const k in gameCamState.keys) gameCamState.keys[k] = false;
 
   // Theme sky/fog already applied above
 

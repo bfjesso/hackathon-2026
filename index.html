@@ -57,12 +57,19 @@
           <option value="ocean">🌊 Ocean</option>
         </select>
         <div class="editor-separator"></div>
+        <label class="editor-label">Build View:</label>
+        <select id="editor-buildview-select" class="editor-select">
+          <option value="free">🎥 Free Camera</option>
+          <option value="set">📌 Set View</option>
+        </select>
+        <button class="editor-sm-btn" id="editor-setview-btn" title="Capture current camera as build view" style="display:none;">📷 Capture</button>
+        <div class="editor-separator"></div>
         <button class="editor-btn editor-play-btn" id="editor-play-btn" title="Save & Play this level">▶️ Play Level</button>
         <button class="editor-btn editor-back-btn" id="editor-back-btn">← Back to Menu</button>
       </div>
       <!-- Bottom hint bar -->
       <div id="editor-hint">
-        Grass: expand ground · Path: draw routes · Spawner/Target: click to place · Placeable: mark buildable tiles · WASD + Arrows + Scroll
+        Grass: expand ground · Path: draw routes · Spawner/Target: click to place · Placeable: mark buildable tiles · Build View: free or set camera for build mode · WASD + Arrows + Scroll
       </div>
     </div>
 
