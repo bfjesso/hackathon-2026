@@ -2057,7 +2057,7 @@ function Zombie(x, z, speed, health = 100, damage = 0.5) {
         }
       }
     } else{
-      if(this.x > 15 || this.x < -15 || this.z > 15 || this.z < -15){
+      if(this.x > 15 && this.z >= -15 && this.z <= 15){
         this.vX = 0;
         this.vZ = 0;
 
@@ -2270,7 +2270,7 @@ function BigZombie(x, z) {
         }
       }
     } else {
-      if (this.x > 15 || this.x < -15 || this.z > 15 || this.z < -15) {
+      if (this.x > 15 && this.z >= -15 && this.z <= 15) {
         this.vX = 0;
         this.vZ = 0;
 
