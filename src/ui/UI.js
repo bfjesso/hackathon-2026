@@ -3,6 +3,7 @@ import { gameContext } from '../game/gameContext.js';
 import { getUpgradeCost, getUpgradeBonus } from '../game/upgradeUtils.js';
 import { applyUpgradeToBuildings } from '../entities/Building.js';
 import { updateGridRings } from '../systems/GridSystem.js';
+import { SoundManager } from '../systems/SoundManager.js';
 
 export const ui = {
   container: null,
@@ -22,6 +23,8 @@ export const ui = {
   upgradeButtons: {},
   powerUpTooltip: null,
   upgradeTooltip: null,
+  killCountDisplay: null,
+  volumeSlider: null,
 
   init() {
     this.container = document.createElement('div');
@@ -86,14 +89,70 @@ export const ui = {
     this.upgradeModeIndicator.style.cssText = 'font-size: 14px; color: #888; margin-top: 5px;';
     this.upgradeModeIndicator.textContent = '[U] Upgrades';
 
+    this.killCountDisplay = document.createElement('div');
+    this.killCountDisplay.style.cssText = 'font-size: 18px; color: #ff9966; margin-bottom: 5px;';
+
     statsPanel.appendChild(this.healthDisplay);
     statsPanel.appendChild(this.energyDisplay);
     statsPanel.appendChild(this.energyRateDisplay);
+    statsPanel.appendChild(this.killCountDisplay);
     statsPanel.appendChild(roundSection);
     statsPanel.appendChild(this.buildModeIndicator);
     statsPanel.appendChild(this.powerUpModeIndicator);
     statsPanel.appendChild(this.upgradeModeIndicator);
     this.container.appendChild(statsPanel);
+
+    // Volume control (bottom-right corner)
+    const volumeContainer = document.createElement('div');
+    volumeContainer.style.cssText = `
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: rgba(0, 0, 0, 0.7);
+      padding: 10px 16px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      z-index: 200;
+      pointer-events: auto;
+      font-family: 'Segoe UI', Arial, sans-serif;
+    `;
+    const volIcon = document.createElement('span');
+    volIcon.textContent = '🔊';
+    volIcon.style.cssText = 'font-size: 18px; cursor: pointer; user-select: none;';
+    this.volumeSlider = document.createElement('input');
+    this.volumeSlider.type = 'range';
+    this.volumeSlider.min = '0';
+    this.volumeSlider.max = '100';
+    this.volumeSlider.value = String(Math.round(SoundManager.getVolume() * 100));
+    this.volumeSlider.style.cssText = `
+      width: 100px;
+      accent-color: #4ecdc4;
+      cursor: pointer;
+    `;
+    const volLabel = document.createElement('span');
+    volLabel.style.cssText = 'color: #ccc; font-size: 13px; min-width: 32px; text-align: right;';
+    volLabel.textContent = this.volumeSlider.value + '%';
+    this.volumeSlider.addEventListener('input', (e) => {
+      const v = parseInt(e.target.value, 10);
+      SoundManager.setVolume(v / 100);
+      volLabel.textContent = v + '%';
+      volIcon.textContent = v === 0 ? '🔇' : v < 50 ? '🔉' : '🔊';
+    });
+    volIcon.addEventListener('click', () => {
+      if (parseInt(this.volumeSlider.value, 10) > 0) {
+        this.volumeSlider.dataset.prev = this.volumeSlider.value;
+        this.volumeSlider.value = '0';
+      } else {
+        this.volumeSlider.value = this.volumeSlider.dataset.prev || '100';
+      }
+      this.volumeSlider.dispatchEvent(new Event('input'));
+    });
+    volumeContainer.appendChild(volIcon);
+    volumeContainer.appendChild(this.volumeSlider);
+    volumeContainer.appendChild(volLabel);
+    document.body.appendChild(volumeContainer);
 
     // Active buff bar (top center)
     this.activeBuffBar = document.createElement('div');
@@ -509,6 +568,7 @@ export const ui = {
   update() {
     const ctx = gameContext;
     this.healthDisplay.textContent = `❤️: ${Math.round(ctx.playerHealth)}`;
+    this.killCountDisplay.textContent = `🏅 Total Kills: ${ctx.totalKills}`;
     this.energyDisplay.textContent = `⚡: ${Math.round(ctx.energy)} Joules`;
 
     // Energy rate calculation

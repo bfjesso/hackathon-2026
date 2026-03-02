@@ -1,9 +1,16 @@
 export const SoundManager = (() => {
   let ctx = null;
+  let masterGain = null;
+  let masterVolume = 0.3;
   const sounds = {};
 
   function getCtx() {
-    if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (!ctx) {
+      ctx = new (window.AudioContext || window.webkitAudioContext)();
+      masterGain = ctx.createGain();
+      masterGain.gain.value = masterVolume;
+      masterGain.connect(ctx.destination);
+    }
     if (ctx.state === 'suspended') ctx.resume();
     return ctx;
   }
@@ -34,8 +41,17 @@ export const SoundManager = (() => {
     const gain = c.createGain();
     gain.gain.value = s.volume;
 
-    source.connect(gain).connect(c.destination);
+    source.connect(gain).connect(masterGain);
     source.start(0);
+  }
+
+  function setVolume(v) {
+    masterVolume = Math.max(0, Math.min(1, v));
+    if (masterGain) masterGain.gain.value = masterVolume;
+  }
+
+  function getVolume() {
+    return masterVolume;
   }
 
   preload('build',     '/sounds/build.mp3',      0.5, 0);
@@ -44,5 +60,5 @@ export const SoundManager = (() => {
   preload('splat',     '/sounds/splat.mp3',       0.5, 80);
   preload('newRound',  '/sounds/new-round.mp3',   0.6, 0);
 
-  return { play };
+  return { play, setVolume, getVolume };
 })();

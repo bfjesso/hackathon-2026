@@ -143,6 +143,7 @@ export function Zombie(x, z, speed, health = 100, damage = 0.5) {
     }
     SoundManager.play('splat');
     gameContext.zombiesKilledThisRound++;
+    gameContext.totalKills++;
     const index = gameContext.zombies.indexOf(this);
     if (index > -1) gameContext.zombies.splice(index, 1);
   };

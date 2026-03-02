@@ -197,6 +197,7 @@ export function BigZombie(x, z) {
     SoundManager.play('explosion');
     // Big zombie counts as 3 kills + bonus energy
     gameContext.zombiesKilledThisRound += 3;
+    gameContext.totalKills += 3;
     gameContext.energy += 200;
     const index = gameContext.bigZombies.indexOf(this);
     if (index > -1) gameContext.bigZombies.splice(index, 1);

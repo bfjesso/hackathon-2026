@@ -51,6 +51,7 @@ export const gameContext = {
   // Round state
   currentRound: 0,
   zombiesKilledThisRound: 0,
+  totalKills: 0,
   zombiesToKillThisRound: 0,
   roundTimeRemaining: 0,
   currentMaxZombies: 3,
