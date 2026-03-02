@@ -14,6 +14,28 @@ function onKeyDown(e) {
     return;
   }
 
+  if (e.key === 'ArrowLeft') {
+    e.preventDefault();
+    const speeds = [0.5, 1, 2, 3];
+    const idx = speeds.indexOf(ctx.timeScale);
+    if (idx > 0) ctx.timeScale = speeds[idx - 1];
+    else if (idx === -1) ctx.timeScale = speeds[0];
+    ctx.paused = false;
+    ui.showSpeedToast();
+    return;
+  }
+
+  if (e.key === 'ArrowRight') {
+    e.preventDefault();
+    const speeds = [0.5, 1, 2, 3];
+    const idx = speeds.indexOf(ctx.timeScale);
+    if (idx < speeds.length - 1 && idx >= 0) ctx.timeScale = speeds[idx + 1];
+    else if (idx === -1) ctx.timeScale = speeds[speeds.length - 1];
+    ctx.paused = false;
+    ui.showSpeedToast();
+    return;
+  }
+
   if (e.key === 'b' || e.key === 'B') { ui.toggleBuildMode(); return; }
   if (e.key === 'p' || e.key === 'P') { ui.togglePowerUpMode(); return; }
   if (e.key === 'u' || e.key === 'U') { ui.toggleUpgradeMode(); return; }
@@ -73,9 +95,14 @@ function onKeyDown(e) {
   }
 
   if (e.key === 'Escape') {
-    if (ctx.buildMode)   ui.toggleBuildMode();
-    if (ctx.powerUpMode) ui.togglePowerUpMode();
-    if (ctx.upgradeMode) ui.toggleUpgradeMode();
+    if (ctx.buildMode || ctx.powerUpMode || ctx.upgradeMode) {
+      if (ctx.buildMode)   ui.toggleBuildMode();
+      if (ctx.powerUpMode) ui.togglePowerUpMode();
+      if (ctx.upgradeMode) ui.toggleUpgradeMode();
+    } else {
+      ctx.paused = !ctx.paused;
+      ui.showSpeedToast();
+    }
   }
 }
 

@@ -62,6 +62,8 @@ export const gameContext = {
   lastFrameTime: 0,
   spawnAccumulator: 0,
   currentTime: 0,
+  paused: false,
+  timeScale: 1,
 
   // Constants
   hydroElectricRate: 0.25,

@@ -141,8 +141,17 @@ export function gameLoop(timestamp) {
 
   // Delta time
   if (ctx.lastFrameTime === 0) ctx.lastFrameTime = timestamp;
-  const deltaTimeMs = Math.min(timestamp - ctx.lastFrameTime, 200);
+  const rawDeltaMs = Math.min(timestamp - ctx.lastFrameTime, 200);
   ctx.lastFrameTime = timestamp;
+
+  // Paused — still render but skip all game logic
+  if (ctx.paused) {
+    ui.update();
+    ctx.renderer.render(ctx.scene, ctx.camera);
+    return;
+  }
+
+  const deltaTimeMs = rawDeltaMs * ctx.timeScale;
   const dt = deltaTimeMs / ctx.renderRate;
 
   // Game over check

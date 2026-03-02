@@ -25,6 +25,8 @@ export const ui = {
   upgradeTooltip: null,
   killCountDisplay: null,
   volumeSlider: null,
+  _speedToast: null,
+  _speedToastTimer: null,
 
   init() {
     this.container = document.createElement('div');
@@ -153,6 +155,31 @@ export const ui = {
     volumeContainer.appendChild(this.volumeSlider);
     volumeContainer.appendChild(volLabel);
     document.body.appendChild(volumeContainer);
+
+    // Speed toast (hidden by default, shown briefly on speed/pause change)
+    this._speedToast = document.createElement('div');
+    this._speedToast.style.cssText = `
+      position: fixed;
+      bottom: 80px;
+      left: 50%;
+      transform: translateX(-50%) scale(0.9);
+      background: rgba(0, 0, 0, 0.8);
+      color: #4ecdc4;
+      font-size: 28px;
+      font-weight: bold;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      padding: 12px 30px;
+      border-radius: 12px;
+      border: 1px solid #4ecdc4;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.25s ease, transform 0.25s ease;
+      z-index: 300;
+      letter-spacing: 2px;
+      text-align: center;
+    `;
+    document.body.appendChild(this._speedToast);
+    this._speedToastTimer = null;
 
     // Active buff bar (top center)
     this.activeBuffBar = document.createElement('div');
@@ -699,5 +726,31 @@ export const ui = {
     }
 
     existing.forEach(el => { if (!activeKeys.has(el.dataset.buff)) el.remove(); });
+  },
+
+  showSpeedToast() {
+    if (!this._speedToast) return;
+    const speeds = [0.5, 1, 2, 3];
+    const speedLabels = ['½x', '1x', '2x', '3x'];
+    let text;
+    if (gameContext.paused) {
+      text = '⏸  PAUSED';
+      this._speedToast.style.color = '#ff8888';
+      this._speedToast.style.borderColor = '#ff8888';
+    } else {
+      const idx = speeds.indexOf(gameContext.timeScale);
+      const label = idx >= 0 ? speedLabels[idx] : gameContext.timeScale + 'x';
+      text = '▶  ' + label;
+      this._speedToast.style.color = gameContext.timeScale === 1 ? '#ccc' : '#4ecdc4';
+      this._speedToast.style.borderColor = gameContext.timeScale === 1 ? '#666' : '#4ecdc4';
+    }
+    this._speedToast.textContent = text;
+    this._speedToast.style.opacity = '1';
+    this._speedToast.style.transform = 'translateX(-50%) scale(1)';
+    clearTimeout(this._speedToastTimer);
+    this._speedToastTimer = setTimeout(() => {
+      this._speedToast.style.opacity = '0';
+      this._speedToast.style.transform = 'translateX(-50%) scale(0.9)';
+    }, gameContext.paused ? 999999 : 1200);
   },
 };
