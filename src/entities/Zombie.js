@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { gameContext } from '../game/gameContext.js';
 import { SoundManager } from '../systems/SoundManager.js';
 import { modelLoader } from '../systems/ModelLoader.js';
-import { getRandomInRange } from '../utils.js';
+
 
 export function Zombie(x, z, speed, health = 100, damage = 0.5) {
   this.x = x;
@@ -40,26 +40,36 @@ export function Zombie(x, z, speed, health = 100, damage = 0.5) {
 
   this.findTarget = function findTarget() {
     const { buildings } = gameContext;
-    let targetX = 0;
+    let targetX = 15;
     let targetZ = 0;
 
-    if (buildings.length === 0) {
-      targetX = 15;
-      targetZ = 0;
-    } else {
-      const randBuilding = buildings[Math.round(getRandomInRange(0, buildings.length - 1))];
-      if (randBuilding) {
-        this.targetBuilding = randBuilding;
-        targetX = randBuilding.x;
-        targetZ = randBuilding.z;
+    if (buildings.length > 0) {
+      let closest = null;
+      let closestDist = Infinity;
+      for (const b of buildings) {
+        if (b.health <= 0) continue;
+        const dx = b.x - this.x;
+        const dz = b.z - this.z;
+        const dist = dx * dx + dz * dz;
+        if (dist < closestDist) {
+          closestDist = dist;
+          closest = b;
+        }
+      }
+      if (closest) {
+        this.targetBuilding = closest;
+        targetX = closest.x;
+        targetZ = closest.z;
       }
     }
 
     const xDiff = targetX - this.x;
     const zDiff = targetZ - this.z;
     const mag = Math.sqrt(xDiff * xDiff + zDiff * zDiff);
-    this.vX = xDiff / mag;
-    this.vZ = zDiff / mag;
+    if (mag > 0) {
+      this.vX = xDiff / mag;
+      this.vZ = zDiff / mag;
+    }
   };
 
   this.update = function update(dt) {

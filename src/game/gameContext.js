@@ -33,7 +33,7 @@ export const gameContext = {
   shieldMesh: null,
 
   // Game state flags
-  energy: 500,
+  energy: 1000,
   playerHealth: 100,
   buildMode: false,
   powerUpMode: false,
